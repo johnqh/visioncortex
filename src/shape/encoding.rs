@@ -437,6 +437,47 @@ impl ShapeEncoding {
         diff
     }
 
+    /// Returns the weighted diff contribution of a single layer.
+    ///
+    /// `layer` is 0-indexed: 0 = coarsest (1 bit), 1 = 4 bits, 2 = 16 bits, …
+    /// Summing all layers equals `shape_encoding_diff_bits`.
+    pub fn shape_encoding_diff_layer(a: &BitVec, b: &BitVec, layer: usize) -> u64 {
+        let l = 1usize << (layer << 1); // 4^layer
+        let ll = Self::length_from_area(l);
+        let mut cc: u64 = 0;
+        for i in 0..l {
+            let ii = ll - l + i;
+            let aa = if ii < a.len() { a[ii] } else { ii % 4 == 0 };
+            let bb = if ii < b.len() { b[ii] } else { ii % 4 == 1 };
+            if aa != bb {
+                cc += 1;
+            }
+        }
+        cc = std::cmp::min(cc, std::cmp::max(l as u64 - 1, 1));
+        cc << Self::layer_shift(l)
+    }
+
+    /// The bit-shift weight for the layer whose area is `l` (must be a power of 4).
+    pub fn layer_shift(l: usize) -> u32 {
+        match l {
+            1 => 8,
+            4 => 8,
+            16 => 8,
+            64 => 8,
+            256 => 8,
+            1024 => 6,
+            4096 => 4,
+            16384 => 2,
+            65536 => 0,
+            _ => panic!("impossible"),
+        }
+    }
+
+    /// Number of encoding layers for the given encoder size (power-of-4 area).
+    pub fn num_layers(encoder_size: usize) -> usize {
+        Self::layer_from_area(encoder_size * encoder_size)
+    }
+
     #[allow(clippy::absurd_extreme_comparisons, clippy::identity_op)]
     fn remainder(i: u64) -> u64 {
         let mut n = 0;
@@ -1078,5 +1119,89 @@ mod tests {
         // Pixel-level bits (seq[2]) diverge: already asserted in grayscale_analog_occupancy.
         assert_ne!(enc_gray.seq[2], enc_bin8.seq[1],
             "finest-level sequences differ — grayscale loses sub-pixel detail");
+    }
+
+    // -----------------------------------------------------------------------
+    // shape_encoding_diff_layer sum == shape_encoding_diff_bits
+    // -----------------------------------------------------------------------
+
+    // Mirrors the loop structure of shape_encoding_diff_bits exactly:
+    // process each layer while both strings reach it, then add the remainder lump and stop.
+    fn diff_by_layers_sum(a: &BitVec, b: &BitVec) -> u64 {
+        let mut total = 0u64;
+        let mut l = 1usize;
+        let mut layer = 0usize;
+        while l <= 65536 {
+            let ll = ShapeEncoding::length_from_area(l);
+            let lls = ShapeEncoding::pow_of_two(l);
+            if a.len() <= ll - l && b.len() <= ll - l {
+                // Both strings exhausted at this layer — add the same remainder lump
+                // that shape_encoding_diff_bits adds, then stop.
+                total += ShapeEncoding::remainder((lls >> 1) as u64);
+                break;
+            }
+            total += ShapeEncoding::shape_encoding_diff_layer(a, b, layer);
+            l <<= 2;
+            layer += 1;
+        }
+        total
+    }
+
+    /// Identical 5-bit strings — diff must be 0 from both paths.
+    #[test]
+    fn diff_layer_sum_identical() {
+        let a = ShapeEncoding::bitstring_to_bits("11010");
+        assert_eq!(
+            diff_by_layers_sum(&a, &a),
+            ShapeEncoding::shape_encoding_diff_bits(&a, &a),
+        );
+    }
+
+    /// Two distinct 5-bit strings — per-layer sum must equal the monolithic diff.
+    #[test]
+    fn diff_layer_sum_5bit() {
+        let a = ShapeEncoding::bitstring_to_bits("10010");
+        let b = ShapeEncoding::bitstring_to_bits("10001");
+        assert_eq!(
+            diff_by_layers_sum(&a, &b),
+            ShapeEncoding::shape_encoding_diff_bits(&a, &b),
+        );
+    }
+
+    /// 25-bit strings from two real 4×4 encodings.
+    #[test]
+    fn diff_layer_sum_25bit() {
+        let a = ShapeEncoding::bitstring_to_bits("1101010101010011100011100");
+        let b = ShapeEncoding::bitstring_to_bits("1111010101011001100110101");
+        assert_eq!(
+            diff_by_layers_sum(&a, &b),
+            ShapeEncoding::shape_encoding_diff_bits(&a, &b),
+        );
+    }
+
+    /// Two genuinely different 4×4 images encoded end-to-end.
+    #[test]
+    fn diff_layer_sum_from_images() {
+        let image_a = BinaryImage::from_string(
+            "*-**\n\
+             -**-\n\
+             *-**\n\
+             --**\n"
+        );
+        let image_b = BinaryImage::from_string(
+            "**--\n\
+             **--\n\
+             --**\n\
+             --**\n"
+        );
+        let (enc_a, _) = ShapeEncoding::encode_binary_image_as_shape_encoding(&image_a);
+        let (enc_b, _) = ShapeEncoding::encode_binary_image_as_shape_encoding(&image_b);
+        let a = enc_a.bits();
+        let b = enc_b.bits();
+        assert_eq!(
+            diff_by_layers_sum(&a, &b),
+            ShapeEncoding::shape_encoding_diff_bits(&a, &b),
+            "per-layer sum must equal monolithic diff for real 4×4 images",
+        );
     }
 }
