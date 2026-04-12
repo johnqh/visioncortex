@@ -1,17 +1,24 @@
-use crate::{BinaryImage, BoundingRect};
+use crate::{BinaryImage, BoundingRect, ColorImage};
+
+/// Common interface used by the shape encoding algorithm.
+/// Returns a occupancy in [0, N], where N = region area (right-left) * (bottom-top).
+pub trait Sampler {
+    fn size(&self) -> usize;
+    fn sample(&self, left: usize, top: usize, right: usize, bottom: usize) -> usize;
+}
 
 /// For sampling and resizing binary images
-pub struct Sampler {
+pub struct BinaryImageSampler {
     pub image: BinaryImage,
 }
 
-impl Sampler {
-    pub fn new(image: &BinaryImage) -> Sampler {
+impl BinaryImageSampler {
+    pub fn new(image: &BinaryImage) -> BinaryImageSampler {
         let size = std::cmp::max(image.width, image.height);
         Self::new_with_size(image, size)
     }
 
-    pub fn new_with_size(image: &BinaryImage, sampler_size: usize) -> Sampler {
+    pub fn new_with_size(image: &BinaryImage, sampler_size: usize) -> BinaryImageSampler {
         Self::new_with_size_crop(image, sampler_size, Default::default())
     }
 
@@ -19,7 +26,7 @@ impl Sampler {
         image: &BinaryImage,
         sampler_size: usize,
         crop: BoundingRect,
-    ) -> Sampler {
+    ) -> BinaryImageSampler {
         let new_image;
         assert_eq!(crop.width(), crop.height());
         if crop.is_empty() && image.width == image.height && image.width == sampler_size {
@@ -32,7 +39,7 @@ impl Sampler {
         } else {
             new_image = Self::resample_square_image(&image, crop, sampler_size);
         }
-        Sampler { image: new_image }
+        BinaryImageSampler { image: new_image }
     }
 
     /// Resize an image of any size into a square image while keeping the aspect ratio of content.
@@ -127,7 +134,14 @@ impl Sampler {
     }
 }
 
-impl Sampler {
+impl Sampler for BinaryImageSampler {
+    fn size(&self) -> usize { self.size() }
+    fn sample(&self, left: usize, top: usize, right: usize, bottom: usize) -> usize {
+        self.sample(left, top, right, bottom)
+    }
+}
+
+impl BinaryImageSampler {
     pub fn size(&self) -> usize {
         self.image.width
     }
@@ -146,6 +160,62 @@ impl Sampler {
             }
         }
         count
+    }
+}
+
+/// Sampler for grayscale images via the red channel of a [`ColorImage`].
+///
+/// Occupancy is continuous: a pixel with red value `v` contributes `(255 - v) / 255`
+/// to the region sum, so mid-gray (127) counts as ~0.5 rather than a binary 0 or 1.
+/// This avoids aliasing when the image is anti-aliased or soft-edged.
+pub struct GrayscaleSampler {
+    /// Red channel of the resampled square image, row-major.
+    red: Vec<u8>,
+    size: usize,
+}
+
+impl GrayscaleSampler {
+    /// Resample `image` (using its red channel) into a `size × size` square,
+    /// centring the content and padding with white (255) where needed.
+    pub fn new_with_size(image: &ColorImage, size: usize) -> Self {
+        let img_size = std::cmp::max(image.width, image.height) as i32;
+        let ox = (img_size - image.width as i32) / 2;
+        let oy = (img_size - image.height as i32) / 2;
+        let mut red = vec![255u8; size * size];
+        for y in 0..size {
+            for x in 0..size {
+                let xx = x as i32 * img_size / size as i32 - ox;
+                let yy = y as i32 * img_size / size as i32 - oy;
+                if xx >= 0 && xx < image.width as i32 && yy >= 0 && yy < image.height as i32 {
+                    red[y * size + x] = image.get_pixel(xx as usize, yy as usize).r;
+                }
+            }
+        }
+        Self { red, size }
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    /// Sum the darkness `(255 - red)` of every pixel in the region and divide by
+    /// 255, collapsing the `[0, N × 255]` integer sum into the `[0, N]` occupancy
+    /// range that the encoding algorithm expects.
+    pub fn sample(&self, left: usize, top: usize, right: usize, bottom: usize) -> usize {
+        let mut sum: u32 = 0;
+        for y in top..bottom {
+            for x in left..right {
+                sum += (255 - self.red[y * self.size + x]) as u32;
+            }
+        }
+        (sum / 255) as usize
+    }
+}
+
+impl Sampler for GrayscaleSampler {
+    fn size(&self) -> usize { self.size() }
+    fn sample(&self, left: usize, top: usize, right: usize, bottom: usize) -> usize {
+        self.sample(left, top, right, bottom)
     }
 }
 
@@ -173,7 +243,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(size, size);
         image.set_pixel(0, 0, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         assert_eq!(sampler.sample(0, 0, 1, 1), 1);
         assert_eq!(sampler.sample(0, 1, 1, 2), 0);
         assert_eq!(sampler.sample(1, 0, 2, 1), 0);
@@ -187,7 +257,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(size,size);
         image.set_pixel(1,1,true);
         image.set_pixel(2,2,true);
-        let sampler = Sampler::new_with_size_crop(&image, 2, BoundingRect {
+        let sampler = BinaryImageSampler::new_with_size_crop(&image, 2, BoundingRect {
             left: 1, top: 1, right: 3, bottom: 3
         });
         assert_eq!(sampler.image.width, 2);
@@ -204,7 +274,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(size, size);
         image.set_pixel(0, 0, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         assert_eq!(sampler.sample(0, 0, size, size), 2); // whole
         assert_eq!(sampler.sample(0, 0, size / 2, size / 2), 2);
         assert_eq!(sampler.sample(size / 2, size / 2, size, size), 0);
@@ -221,7 +291,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(4, 4);
         image.set_pixel(1, 1, true);
         println!("image:\n{}", image.to_string());
-        let sampler = Sampler::new_with_size(&image, 8);
+        let sampler = BinaryImageSampler::new_with_size(&image, 8);
         assert_eq!(sampler.image.width, 8);
         println!("upsized:\n{}", sampler.image.to_string());
         assert_eq!(sampler.sample(2, 2, 4, 4), 4);
@@ -234,7 +304,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(8,8);
         image.set_pixel(2,2,true);
         println!("image:\n{}", image.to_string());
-        let sampler = Sampler::new_with_size_crop(&image, 8, BoundingRect {
+        let sampler = BinaryImageSampler::new_with_size_crop(&image, 8, BoundingRect {
             left: 1, top: 1, right: 5, bottom: 5
         });
         assert_eq!(sampler.image.width, 8);
@@ -248,7 +318,7 @@ mod tests {
     fn sampler_upsize_non_exact() {
         let mut image = BinaryImage::new_w_h(6, 6);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, 8);
+        let sampler = BinaryImageSampler::new_with_size(&image, 8);
         assert_eq!(sampler.sample(0, 0, 8, 8), 1);
     }
 
@@ -258,7 +328,7 @@ mod tests {
             "*-\n".to_owned()+
             "-*\n"));
         assert_eq!(
-            Sampler::resample_image(&image, 4, 2).to_string(),
+            BinaryImageSampler::resample_image(&image, 4, 2).to_string(),
             BinaryImage::from_string(&(
                 "**--\n".to_owned()+
                 "--**\n")).to_string()
@@ -272,7 +342,7 @@ mod tests {
             "*-\n"+
             "-*\n"));
         let mut new_image = BinaryImage::new_w_h(4, 4);
-        Sampler::resample_image_with_crop_to_image(
+        BinaryImageSampler::resample_image_with_crop_to_image(
             &image, BoundingRect::new_x_y_w_h(0, 1, 2, 2),
             &mut new_image, BoundingRect::new_x_y_w_h(0, 1, 4, 2),
         );
@@ -292,7 +362,7 @@ mod tests {
             "*-\n".to_owned()+
             "-*\n"));
         assert_eq!(
-            Sampler::resample_image(&image, 3, 2).to_string(),
+            BinaryImageSampler::resample_image(&image, 3, 2).to_string(),
             BinaryImage::from_string(&(
                 "**-\n".to_owned()+
                 "--*\n")).to_string()
@@ -306,7 +376,7 @@ mod tests {
         image.set_pixel(2, 1, true);
         image.set_pixel(1, 2, true);
         image.set_pixel(2, 2, true);
-        let new_image = Sampler::resample_image(&image, 2, 2);
+        let new_image = BinaryImageSampler::resample_image(&image, 2, 2);
         assert_eq!(new_image.width, 2);
         assert_eq!(new_image.height, 2);
         assert_eq!(new_image.get_pixel(0, 0), false);

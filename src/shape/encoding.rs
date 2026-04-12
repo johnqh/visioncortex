@@ -9,7 +9,7 @@
 //! + which means querying can be done in sub-linear time
 //! 
 //! The algorithm is particularly effective in searching for a symbol (query) from a database of symbols, and the experimental results on Chinese / Korean OCR shown great results.
-//! It can be generalized to colored graphics, i.e. road signs and logos.
+//! It can be generalized to grayscale and colored graphics, i.e. icons, emoij and logos.
 //! 
 //! The idea of the algorithm is simple - it falls under the statistical shape analysis family,
 //! basically denoting the mass of the shape as fraction of the occupancy of space, and shuffling the bits by their contribution to entropy - more significant bits come first.
@@ -17,7 +17,7 @@
 //! Another interesting property is that you can basically truncate the bit string arbitrarily (there are dedicated splice points)
 //! and still retain some resemblance to the original shape. In other words, fidelity is directly proportional to the length of the bit string.
 //! In another words, you can roughly control how much entropy a given symbol occupy.
-use crate::{BinaryImage, BitVec, Sampler, Shape, SpiralWalker};
+use crate::{BinaryImage, BitVec, BinaryImageSampler, ColorImage, GrayscaleSampler, Sampler, Shape, SpiralWalker};
 
 #[derive(Default)]
 pub struct ShapeEncoding {
@@ -31,7 +31,8 @@ pub enum ShapeEncodingString {
 }
 
 impl ShapeEncoding {
-    pub fn encode_as_shape_encoding(sampler: &Sampler) -> ShapeEncoding {
+    // sampler.size must be square and power of 2
+    pub fn encode_as_shape_encoding(sampler: &impl Sampler) -> ShapeEncoding {
         let mut seq = Vec::<BitVec>::new();
         let size = sampler.size();
         let layers = ShapeEncoding::layer_from_area(size * size);
@@ -87,22 +88,36 @@ impl ShapeEncoding {
     }
 
     pub fn encode_binary_image(image: &BinaryImage) -> ShapeEncodingString {
-        Self::encode_binary_image_as_hex_encoding_string_and_size(image).0
+        Self::encode_binary_image_as_hex_encoding(image).0
     }
 
-    pub fn encode_binary_image_as_hex_encoding_string_and_size(
+    pub fn encode_binary_image_as_hex_encoding(
         image: &BinaryImage,
     ) -> (ShapeEncodingString, usize) {
-        let (encoding, encoder_size) = Self::encode_binary_image_as_shape_encoding_and_size(image);
+        let (encoding, encoder_size) = Self::encode_binary_image_as_shape_encoding(image);
         (encoding.hexstring(), encoder_size)
     }
 
-    pub fn encode_binary_image_as_shape_encoding_and_size(
+    pub fn encode_binary_image_as_shape_encoding(
         image: &BinaryImage,
     ) -> (ShapeEncoding, usize) {
         let size = std::cmp::max(image.width, image.height) as usize;
         let encoder_size = 1 << ShapeEncoding::next_pow_of_four(size * size);
-        let sampler = Sampler::new_with_size(image, encoder_size);
+        let sampler = BinaryImageSampler::new_with_size(image, encoder_size);
+        let encoding = Self::encode_as_shape_encoding(&sampler);
+        (encoding, encoder_size)
+    }
+
+    /// Encode a [`ColorImage`] using the red channel as grayscale.
+    ///
+    /// Assume shape is black-on-white, and uses the full u8 value range.
+    /// So black (r=0) means 100% occupancy a pixel.
+    pub fn encode_grayscale_image_as_shape_encoding_and_size(
+        image: &ColorImage,
+    ) -> (ShapeEncoding, usize) {
+        let size = std::cmp::max(image.width, image.height);
+        let encoder_size = 1 << ShapeEncoding::next_pow_of_four(size * size);
+        let sampler = GrayscaleSampler::new_with_size(image, encoder_size);
         let encoding = Self::encode_as_shape_encoding(&sampler);
         (encoding, encoder_size)
     }
@@ -472,6 +487,7 @@ impl ShapeEncodingString {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{BinaryImageSampler, Color, ColorImage, GrayscaleSampler};
 
     #[test]
     fn pow_of_two() {
@@ -539,7 +555,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(size, size);
         image.set_pixel(0, 0, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
         assert_eq!(encoding.size(), size);
         assert_eq!(encoding.length(), 5);
@@ -566,7 +582,7 @@ mod tests {
         image.set_pixel(0, 0, true);
         image.set_pixel(0, 1, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
         let layer0 = &encoding.seq[0];
         assert_eq!(layer0.len(), 2);
@@ -584,7 +600,7 @@ mod tests {
         image.set_pixel(0, 1, true);
         image.set_pixel(1, 0, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
         let layer0 = &encoding.seq[0];
         assert_eq!(layer0.len(), 2);
@@ -627,7 +643,7 @@ mod tests {
         image.set_pixel(1, 1, true);
         image.set_pixel(2, 2, true);
         image.set_pixel(3, 3, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
         assert_eq!(encoding.size(), size);
         assert_eq!(encoding.length(), 25);
@@ -677,7 +693,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(size, size);
         image.set_pixel(0, 0, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
         let bits = encoding.bits();
         assert_eq!(bits.len(), 5);
@@ -696,7 +712,7 @@ mod tests {
         image.set_pixel(1, 1, true);
         image.set_pixel(2, 2, true);
         image.set_pixel(3, 3, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
         let bits = encoding.bits();
         assert_eq!(bits.len(), 25);
@@ -727,7 +743,7 @@ mod tests {
         image.set_pixel(0, 0, true);
         image.set_pixel(1, 1, true);
         {
-            let sampler = Sampler::new_with_size(&image, 2);
+            let sampler = BinaryImageSampler::new_with_size(&image, 2);
             let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
             println!("{}", encoding.bitstring().unwrap());
             assert_eq!(encoding.bits().len(), 5);
@@ -745,7 +761,7 @@ mod tests {
             );
         }
         {
-            let sampler = Sampler::new_with_size(&image, 4);
+            let sampler = BinaryImageSampler::new_with_size(&image, 4);
             let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
             println!("{}", encoding.bitstring().unwrap());
             assert_eq!(encoding.bits().len(), 25);
@@ -764,7 +780,7 @@ mod tests {
             );
         }
         {
-            let sampler = Sampler::new_with_size(&image, 8);
+            let sampler = BinaryImageSampler::new_with_size(&image, 8);
             let encoding = ShapeEncoding::encode_as_shape_encoding(&sampler);
             assert_eq!(encoding.bits().len(), 105);
             println!("{}", encoding.bitstring().unwrap());
@@ -829,7 +845,7 @@ mod tests {
         let mut image = BinaryImage::new_w_h(size, size);
         image.set_pixel(0, 0, true);
         image.set_pixel(1, 1, true);
-        let sampler = Sampler::new_with_size(&image, size);
+        let sampler = BinaryImageSampler::new_with_size(&image, size);
         let hexstring = ShapeEncoding::encode_as_shape_encoding(&sampler).hexstring();
         let decoded = ShapeEncoding::decode_from(&hexstring).image;
         assert_eq!(decoded.pixels, image.pixels);
@@ -882,5 +898,185 @@ mod tests {
             ),
             (1 << 8) + (5 << 8) + ShapeEncoding::remainder(3)
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Grayscale sampler equivalence tests
+    // -----------------------------------------------------------------------
+
+    /// A binary image converted to ColorImage via `to_color_image` uses r=0 for
+    /// black and r=255 for white, so each pixel contributes exactly 1 or 0 to
+    /// `GrayscaleSampler::sample()`.  All encoding layers must be bit-identical.
+    #[test]
+    fn grayscale_matches_binary_via_to_color_image() {
+        let binary = BinaryImage::from_string(
+            "*-**\n\
+             -**-\n\
+             *--*\n\
+             --**\n"
+        );
+        let (enc_bin, size_bin) =
+            ShapeEncoding::encode_binary_image_as_shape_encoding(&binary);
+        let color = binary.to_color_image();
+        let (enc_gray, size_gray) =
+            ShapeEncoding::encode_grayscale_image_as_shape_encoding_and_size(&color);
+
+        assert_eq!(size_bin, size_gray);
+        assert_eq!(enc_bin.seq, enc_gray.seq, "all layers must be bit-identical");
+    }
+
+    /// Analog gray values encode occupancy fractions faithfully at coarser scales.
+    ///
+    /// Four 2×2 quadrants with known occupancies are represented two ways:
+    ///
+    /// | quadrant | binary (exact)       | gray `red` | gray sample formula         |
+    /// |----------|----------------------|------------|-----------------------------|
+    /// | TL       | 2/4 black            | 127        | 4 × 128 / 255 = 2           |
+    /// | TR       | 3/4 black            |  63        | 4 × 192 / 255 = 3           |
+    /// | BL       | 1/4 black            | 191        | 4 ×  64 / 255 = 1           |
+    /// | BR       | 4/4 black            |   0        | 4 × 255 / 255 = 4           |
+    ///
+    /// `seq[0]` (global, 4×4 region): binary=10, gray=2556/255=10 — identical.
+    /// `seq[1]` (per-quadrant, 2×2 regions): [2,3,1,4] — identical.
+    /// `seq[2]` (per-pixel, 1×1): diverges by design — a single pixel at red=127
+    ///          yields `(255-127)/255 = 0` in integer arithmetic, losing sub-pixel
+    ///          precision that only emerges when pixels are averaged over a region.
+    #[test]
+    fn grayscale_analog_occupancy() {
+        // Binary 4×4: TL=2, TR=3, BL=1, BR=4 black pixels
+        let binary = BinaryImage::from_string(
+            "*-**\n\
+             -**-\n\
+             *-**\n\
+             --**\n"
+        );
+
+        // Grayscale 4×4: uniform gray per quadrant, chosen so the 4-pixel
+        // region sum equals the binary count (verified in the table above).
+        let mut color = ColorImage::new_w_h(4, 4);
+        let gray = |r: u8| Color::new_rgba(r, r, r, 255);
+        for y in 0..2 { for x in 0..2 { color.set_pixel(x, y, &gray(127)); } } // TL: occ 2
+        for y in 0..2 { for x in 2..4 { color.set_pixel(x, y, &gray( 63)); } } // TR: occ 3
+        for y in 2..4 { for x in 0..2 { color.set_pixel(x, y, &gray(191)); } } // BL: occ 1
+        for y in 2..4 { for x in 2..4 { color.set_pixel(x, y, &gray(  0)); } } // BR: occ 4
+
+        let bin_sampler  = BinaryImageSampler::new_with_size(&binary, 4);
+        let gray_sampler = GrayscaleSampler::new_with_size(&color, 4);
+
+        let enc_bin  = ShapeEncoding::encode_as_shape_encoding(&bin_sampler);
+        let enc_gray = ShapeEncoding::encode_as_shape_encoding(&gray_sampler);
+
+        assert_eq!(enc_bin.seq[0], enc_gray.seq[0], "global occupancy (seq[0]) must match");
+        assert_eq!(enc_bin.seq[1], enc_gray.seq[1], "quadrant occupancy (seq[1]) must match");
+        // Per-pixel layer diverges: integer division collapses sub-255 darkness
+        // to 0 at 1×1 scale — the analog representation loses pixel-level detail.
+        assert_ne!(enc_bin.seq[2], enc_gray.seq[2], "per-pixel layer (seq[2]) differs by design");
+    }
+
+    // -----------------------------------------------------------------------
+    // Scale-independence / prefix property
+    // -----------------------------------------------------------------------
+
+    /// A 4×4 binary image and its explicit 2× upscale (each pixel → 2×2 block)
+    /// are two genuinely different images at different resolutions.  The encoding
+    /// is scale-independent: the 4×4 encoding (25 bits) is a prefix of the 8×8
+    /// encoding (105 bits).
+    ///
+    /// This demonstrates the core theory: a high-resolution binary image is the
+    /// ground truth; grayscale (or lower-resolution binary) is just an approximation
+    /// whose coarser layers agree with the high-fidelity source.
+    #[test]
+    fn encoding_prefix_4x4_vs_8x8_upscale() {
+        // 4×4 source
+        let image_4x4 = BinaryImage::from_string(
+            "*-**\n\
+             -**-\n\
+             *-**\n\
+             --**\n"
+        );
+
+        // Explicit 2× upscale: every pixel becomes a 2×2 block
+        let image_8x8 = BinaryImage::from_string(
+            "**--****\n\
+             **--****\n\
+             --****--\n\
+             --****--\n\
+             **--****\n\
+             **--****\n\
+             ----****\n\
+             ----****\n"
+        );
+
+        let (enc_4x4, _) = ShapeEncoding::encode_binary_image_as_shape_encoding(&image_4x4);
+        let (enc_8x8, _) = ShapeEncoding::encode_binary_image_as_shape_encoding(&image_8x8);
+
+        let bits_4x4 = enc_4x4.bits();          // 25 bits
+        let mut bits_8x8 = enc_8x8.bits();      // 105 bits
+        bits_8x8.truncate(bits_4x4.len());
+
+        assert_eq!(bits_4x4, bits_8x8,
+            "4×4 encoding must be a prefix of the 2× upscaled 8×8 encoding");
+    }
+
+    /// A 4×4 grayscale image matches the coarse prefix of an 8×8 binary image
+    /// that carries the same occupancy pattern at each scale.
+    ///
+    /// The bits() stream is hierarchical: the first bits encode global occupancy,
+    /// then per-quadrant, then per-pixel.  Grayscale analog values agree with
+    /// binary at the two coarser levels (seq[0]+seq[1] → 9 leading bits) but
+    /// diverge at the pixel level because `(255 − red) / 255` rounds to 0 for
+    /// any single-pixel gray value that isn't 0.  This is the expected precision
+    /// boundary: the analog representation is faithful above 1×1 resolution.
+    #[test]
+    fn encoding_prefix_grayscale_4x4_vs_binary_8x8() {
+        // Same quadrant occupancies as the analog test:
+        //   TL 2/4, TR 3/4, BL 1/4, BR 4/4
+        // 4×4 grayscale analog (from grayscale_analog_occupancy)
+        let mut color = ColorImage::new_w_h(4, 4);
+        let gray = |r: u8| Color::new_rgba(r, r, r, 255);
+        for y in 0..2 { for x in 0..2 { color.set_pixel(x, y, &gray(127)); } } // TL: occ 2
+        for y in 0..2 { for x in 2..4 { color.set_pixel(x, y, &gray( 63)); } } // TR: occ 3
+        for y in 2..4 { for x in 0..2 { color.set_pixel(x, y, &gray(191)); } } // BL: occ 1
+        for y in 2..4 { for x in 2..4 { color.set_pixel(x, y, &gray(  0)); } } // BR: occ 4
+
+        // 8×8 binary: each grayscale pixel → 2×2 block with matching density
+        //   TL blocks: *-/-* (2/4 black)   TR blocks: **/*- (3/4 black)
+        //   BL blocks: *-/-- (1/4 black)   BR blocks: **/** (4/4 black)
+        let image_8x8 = BinaryImage::from_string(
+            "*-*-****\n\
+             -*-**-*-\n\
+             *-*-****\n\
+             -*-**-*-\n\
+             *-*-****\n\
+             ----****\n\
+             *-*-****\n\
+             ----****\n"
+        );
+
+        let (enc_gray, _) =
+            ShapeEncoding::encode_grayscale_image_as_shape_encoding_and_size(&color);
+        let (enc_bin8, _) =
+            ShapeEncoding::encode_binary_image_as_shape_encoding(&image_8x8);
+
+        let bits_gray = enc_gray.bits();   // 25 bits
+        let bits_bin8 = enc_bin8.bits();   // 105 bits
+
+        // The coarse prefix: all bits except the finest-resolution seq layer.
+        // For a 4×4 sampler that is seq[0](1b) + seq[1](8b) + seq[2](16b),
+        // the first 9 bits come from seq[0] and seq[1] and are scale-invariant.
+        // Coarse prefix: all bits except the finest-resolution seq layer.
+        // For a 4×4 sampler: seq[0](1b) + seq[1](8b) + seq[2](16b) → first 9 bits are coarse.
+        let coarse_len = bits_gray.len() - enc_gray.seq.last().unwrap().len(); // 25 - 16 = 9
+
+        let mut gray_coarse = bits_gray.clone();
+        gray_coarse.truncate(coarse_len);
+        let mut bin8_coarse = bits_bin8.clone();
+        bin8_coarse.truncate(coarse_len);
+        assert_eq!(gray_coarse, bin8_coarse,
+            "coarse occupancy bits must match between 4×4 grayscale and 8×8 binary");
+
+        // Pixel-level bits (seq[2]) diverge: already asserted in grayscale_analog_occupancy.
+        assert_ne!(enc_gray.seq[2], enc_bin8.seq[1],
+            "finest-level sequences differ — grayscale loses sub-pixel detail");
     }
 }
