@@ -417,18 +417,7 @@ impl ShapeEncoding {
                 }
             }
             cc = std::cmp::min(cc, std::cmp::max(l as u64 - 1, 1));
-            let shift = match l {
-                1 => 8,
-                4 => 8,
-                16 => 8,
-                64 => 8,
-                256 => 8,
-                1024 => 6,
-                4096 => 4,
-                16384 => 2,
-                65536 => 0,
-                _ => panic!("impossible"),
-            };
+            let shift = Self::layer_shift(l);
             diff += cc << shift;
             #[cfg(test)]
             println!("{} << {}", cc, shift);

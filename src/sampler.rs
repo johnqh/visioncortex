@@ -178,6 +178,13 @@ impl GrayscaleSampler {
     /// Resample `image` (using its red channel) into a `size × size` square,
     /// centring the content and padding with white (255) where needed.
     pub fn new_with_size(image: &ColorImage, size: usize) -> Self {
+        // Fast path: already a square of the right size — copy red channel directly.
+        if image.width == size && image.height == size {
+            let red = (0..size * size)
+                .map(|i| image.get_pixel_at(i).r)
+                .collect();
+            return Self { red, size };
+        }
         let img_size = std::cmp::max(image.width, image.height) as i32;
         let ox = (img_size - image.width as i32) / 2;
         let oy = (img_size - image.height as i32) / 2;
