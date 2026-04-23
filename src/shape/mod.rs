@@ -5,6 +5,7 @@ mod processor;
 pub mod rasterizer;
 mod skeleton;
 mod arc;
+mod morphology;
 
 pub use encoding::*;
 pub use geometry::*;

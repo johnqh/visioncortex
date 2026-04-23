@@ -42,6 +42,10 @@ impl Shape {
         (boundary, first, length)
     }
 
+    pub fn erode_interior(image: &BinaryImage, depth: usize) -> BinaryImage {
+        super::morphology::erode_interior(image, depth)
+    }
+
     pub fn image_boundary_list(image: &BinaryImage) -> Vec<PointI32> {
         Self::image_boundary_list_transpose(image, false)
     }
