@@ -1,0 +1,42 @@
+case blocks_hier4
+size 48x48
+output_len 36
+cluster_indices_fnv 57932c1ead882d25
+raster_fnv b593f03d32cfe0a5
+clusters:
+  0: area=64 color=220,30,30,255 residue=220,30,30,255 rect=0,0,8,8 depth=0 holes=0 num_holes=0
+  1: area=64 color=30,220,30,255 residue=30,220,30,255 rect=8,0,16,8 depth=0 holes=0 num_holes=0
+  2: area=64 color=30,30,220,255 residue=30,30,220,255 rect=16,0,24,8 depth=0 holes=0 num_holes=0
+  3: area=64 color=220,220,30,255 residue=220,220,30,255 rect=24,0,32,8 depth=0 holes=0 num_holes=0
+  4: area=64 color=30,220,220,255 residue=30,220,220,255 rect=32,0,40,8 depth=0 holes=0 num_holes=0
+  5: area=64 color=220,30,220,255 residue=220,30,220,255 rect=40,0,48,8 depth=0 holes=0 num_holes=0
+  6: area=64 color=240,240,240,255 residue=240,240,240,255 rect=0,8,8,16 depth=0 holes=0 num_holes=0
+  7: area=64 color=20,20,20,255 residue=20,20,20,255 rect=8,8,16,16 depth=0 holes=0 num_holes=0
+  8: area=64 color=220,30,30,255 residue=220,30,30,255 rect=16,8,24,16 depth=0 holes=0 num_holes=0
+  9: area=64 color=30,220,30,255 residue=30,220,30,255 rect=24,8,32,16 depth=0 holes=0 num_holes=0
+  10: area=64 color=30,30,220,255 residue=30,30,220,255 rect=32,8,40,16 depth=0 holes=0 num_holes=0
+  11: area=64 color=220,220,30,255 residue=220,220,30,255 rect=40,8,48,16 depth=0 holes=0 num_holes=0
+  12: area=64 color=30,220,220,255 residue=30,220,220,255 rect=0,16,8,24 depth=0 holes=0 num_holes=0
+  13: area=64 color=220,30,220,255 residue=220,30,220,255 rect=8,16,16,24 depth=0 holes=0 num_holes=0
+  14: area=64 color=240,240,240,255 residue=240,240,240,255 rect=16,16,24,24 depth=0 holes=0 num_holes=0
+  15: area=64 color=20,20,20,255 residue=20,20,20,255 rect=24,16,32,24 depth=0 holes=0 num_holes=0
+  16: area=64 color=220,30,30,255 residue=220,30,30,255 rect=32,16,40,24 depth=0 holes=0 num_holes=0
+  17: area=64 color=30,220,30,255 residue=30,220,30,255 rect=40,16,48,24 depth=0 holes=0 num_holes=0
+  18: area=64 color=30,30,220,255 residue=30,30,220,255 rect=0,24,8,32 depth=0 holes=0 num_holes=0
+  19: area=64 color=220,220,30,255 residue=220,220,30,255 rect=8,24,16,32 depth=0 holes=0 num_holes=0
+  20: area=64 color=30,220,220,255 residue=30,220,220,255 rect=16,24,24,32 depth=0 holes=0 num_holes=0
+  21: area=64 color=220,30,220,255 residue=220,30,220,255 rect=24,24,32,32 depth=0 holes=0 num_holes=0
+  22: area=64 color=240,240,240,255 residue=240,240,240,255 rect=32,24,40,32 depth=0 holes=0 num_holes=0
+  23: area=64 color=20,20,20,255 residue=20,20,20,255 rect=40,24,48,32 depth=0 holes=0 num_holes=0
+  24: area=64 color=220,30,30,255 residue=220,30,30,255 rect=0,32,8,40 depth=0 holes=0 num_holes=0
+  25: area=64 color=30,220,30,255 residue=30,220,30,255 rect=8,32,16,40 depth=0 holes=0 num_holes=0
+  26: area=64 color=30,30,220,255 residue=30,30,220,255 rect=16,32,24,40 depth=0 holes=0 num_holes=0
+  27: area=64 color=220,220,30,255 residue=220,220,30,255 rect=24,32,32,40 depth=0 holes=0 num_holes=0
+  28: area=64 color=30,220,220,255 residue=30,220,220,255 rect=32,32,40,40 depth=0 holes=0 num_holes=0
+  29: area=64 color=220,30,220,255 residue=220,30,220,255 rect=40,32,48,40 depth=0 holes=0 num_holes=0
+  30: area=64 color=240,240,240,255 residue=240,240,240,255 rect=0,40,8,48 depth=0 holes=0 num_holes=0
+  31: area=64 color=20,20,20,255 residue=20,20,20,255 rect=8,40,16,48 depth=0 holes=0 num_holes=0
+  32: area=64 color=220,30,30,255 residue=220,30,30,255 rect=16,40,24,48 depth=0 holes=0 num_holes=0
+  33: area=64 color=30,220,30,255 residue=30,220,30,255 rect=24,40,32,48 depth=0 holes=0 num_holes=0
+  34: area=64 color=30,30,220,255 residue=30,30,220,255 rect=32,40,40,48 depth=0 holes=0 num_holes=0
+  35: area=64 color=220,220,30,255 residue=220,220,30,255 rect=40,40,48,48 depth=0 holes=0 num_holes=0

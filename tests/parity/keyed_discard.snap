@@ -1,0 +1,7 @@
+case keyed_discard
+size 48x48
+output_len 1
+cluster_indices_fnv 171b2fc3240d3725
+raster_fnv 82fafad82e810525
+clusters:
+  0: area=576 color=120,120,120,255 residue=120,120,120,255 rect=12,12,36,36 depth=0 holes=0 num_holes=0

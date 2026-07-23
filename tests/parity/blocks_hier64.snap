@@ -1,0 +1,19 @@
+case blocks_hier64
+size 48x48
+output_len 13
+cluster_indices_fnv 8079e72701078f25
+raster_fnv cc3bb0bbf819e425
+clusters:
+  0: area=128 color=125,220,30,255 residue=125,220,30,255 rect=24,0,32,16 depth=0 holes=0 num_holes=0
+  1: area=128 color=230,135,230,255 residue=230,135,230,255 rect=8,16,24,24 depth=0 holes=0 num_holes=0
+  2: area=128 color=120,25,25,255 residue=120,25,25,255 rect=24,16,40,24 depth=0 holes=0 num_holes=0
+  3: area=128 color=230,135,230,255 residue=230,135,230,255 rect=24,24,40,32 depth=0 holes=0 num_holes=0
+  4: area=128 color=30,125,220,255 residue=30,125,220,255 rect=16,24,24,40 depth=0 holes=0 num_holes=0
+  5: area=128 color=120,25,25,255 residue=120,25,25,255 rect=8,40,24,48 depth=0 holes=0 num_holes=0
+  6: area=128 color=125,220,30,255 residue=125,220,30,255 rect=24,32,32,48 depth=0 holes=0 num_holes=0
+  7: area=192 color=93,93,220,255 residue=93,93,220,255 rect=32,0,48,16 depth=0 holes=0 num_holes=0
+  8: area=192 color=100,163,226,255 residue=100,163,226,255 rect=0,8,8,32 depth=0 holes=0 num_holes=0
+  9: area=192 color=90,153,26,255 residue=90,153,26,255 rect=40,8,48,32 depth=0 holes=0 num_holes=0
+  10: area=256 color=177,177,82,255 residue=177,177,82,255 rect=0,24,16,48 depth=0 holes=0 num_holes=0
+  11: area=256 color=125,125,172,255 residue=125,125,172,255 rect=32,32,48,48 depth=0 holes=0 num_holes=0
+  12: area=320 color=104,66,66,255 residue=104,66,66,255 rect=0,0,24,16 depth=0 holes=0 num_holes=0

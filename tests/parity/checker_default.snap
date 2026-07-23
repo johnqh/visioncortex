@@ -1,0 +1,7 @@
+case checker_default
+size 48x48
+output_len 1
+cluster_indices_fnv 00f2aaefbc11e325
+raster_fnv 3e0e8e662aceef25
+clusters:
+  0: area=2304 color=125,125,125,255 residue=125,125,125,255 rect=0,0,48,48 depth=0 holes=0 num_holes=0

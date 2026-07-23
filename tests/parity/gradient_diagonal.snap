@@ -1,0 +1,7 @@
+case gradient_diagonal
+size 48x40
+output_len 1
+cluster_indices_fnv 038b81b01423b325
+raster_fnv c0f6a33231411725
+clusters:
+  0: area=1920 color=124,123,124,255 residue=124,123,124,255 rect=0,0,48,40 depth=0 holes=0 num_holes=0

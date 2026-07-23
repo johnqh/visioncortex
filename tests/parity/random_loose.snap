@@ -1,0 +1,38 @@
+case random_loose
+size 48x48
+output_len 32
+cluster_indices_fnv 8c59322f22226325
+raster_fnv 521b3e1b9bb783fd
+clusters:
+  0: area=17 color=48,52,94,255 residue=48,52,94,255 rect=0,30,6,34 depth=0 holes=0 num_holes=0
+  1: area=18 color=74,42,113,255 residue=74,42,113,255 rect=8,0,15,5 depth=0 holes=0 num_holes=0
+  2: area=18 color=117,142,64,255 residue=117,142,64,255 rect=33,17,40,22 depth=0 holes=0 num_holes=0
+  3: area=18 color=160,81,81,255 residue=160,81,81,255 rect=18,28,23,36 depth=0 holes=0 num_holes=0
+  4: area=18 color=99,142,32,255 residue=99,142,32,255 rect=41,30,47,37 depth=0 holes=0 num_holes=0
+  5: area=18 color=85,35,53,255 residue=85,35,53,255 rect=3,39,7,47 depth=0 holes=0 num_holes=0
+  6: area=19 color=104,141,40,255 residue=104,141,40,255 rect=26,26,31,34 depth=0 holes=0 num_holes=0
+  7: area=19 color=87,64,80,255 residue=87,64,80,255 rect=30,28,34,35 depth=0 holes=0 num_holes=0
+  8: area=19 color=104,53,144,255 residue=104,53,144,255 rect=9,43,15,48 depth=0 holes=0 num_holes=0
+  9: area=20 color=115,86,121,255 residue=115,86,121,255 rect=34,0,40,6 depth=0 holes=0 num_holes=0
+  10: area=20 color=60,108,137,255 residue=60,108,137,255 rect=19,7,26,14 depth=0 holes=0 num_holes=0
+  11: area=20 color=115,89,32,255 residue=115,89,32,255 rect=20,10,26,17 depth=0 holes=0 num_holes=0
+  12: area=20 color=64,48,70,255 residue=64,48,70,255 rect=35,29,41,34 depth=0 holes=0 num_holes=0
+  13: area=21 color=76,67,76,255 residue=76,67,76,255 rect=32,4,38,11 depth=0 holes=0 num_holes=0
+  14: area=24 color=82,130,144,255 residue=82,130,144,255 rect=26,15,32,24 depth=0 holes=0 num_holes=0
+  15: area=24 color=58,120,50,255 residue=58,120,50,255 rect=10,21,17,27 depth=0 holes=0 num_holes=0
+  16: area=25 color=94,151,104,255 residue=94,151,104,255 rect=43,13,48,24 depth=0 holes=0 num_holes=0
+  17: area=27 color=35,68,49,255 residue=35,68,49,255 rect=4,5,12,13 depth=0 holes=0 num_holes=0
+  18: area=27 color=106,35,104,255 residue=106,35,104,255 rect=42,19,48,28 depth=0 holes=0 num_holes=0
+  19: area=27 color=144,118,87,255 residue=144,118,87,255 rect=20,37,31,45 depth=0 holes=0 num_holes=0
+  20: area=28 color=102,77,36,255 residue=102,77,36,255 rect=37,0,44,8 depth=0 holes=0 num_holes=0
+  21: area=29 color=83,97,156,255 residue=83,97,156,255 rect=39,1,45,11 depth=0 holes=0 num_holes=0
+  22: area=29 color=121,88,19,255 residue=121,88,19,255 rect=10,38,19,48 depth=0 holes=0 num_holes=0
+  23: area=34 color=92,148,84,255 residue=92,148,84,255 rect=9,3,20,11 depth=0 holes=0 num_holes=0
+  24: area=42 color=132,109,67,255 residue=132,109,67,255 rect=35,6,44,16 depth=0 holes=0 num_holes=0
+  25: area=62 color=132,94,83,255 residue=132,94,83,255 rect=0,1,8,16 depth=0 holes=0 num_holes=0
+  26: area=65 color=64,120,115,255 residue=53,113,98,255 rect=17,15,32,24 depth=1 holes=0 num_holes=0
+  27: area=66 color=137,57,122,255 residue=137,57,122,255 rect=16,18,36,28 depth=0 holes=0 num_holes=0
+  28: area=74 color=134,102,64,255 residue=132,132,99,255 rect=10,28,23,48 depth=2 holes=0 num_holes=0
+  29: area=77 color=79,78,110,255 residue=79,78,110,255 rect=15,35,29,48 depth=0 holes=0 num_holes=0
+  30: area=358 color=82,97,91,255 residue=75,96,93,255 rect=0,0,26,25 depth=3 holes=0 num_holes=0
+  31: area=2304 color=95,94,97,255 residue=96,96,103,255 rect=0,0,48,48 depth=3 holes=77 num_holes=1

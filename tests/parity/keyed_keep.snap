@@ -1,0 +1,8 @@
+case keyed_keep
+size 48x48
+output_len 2
+cluster_indices_fnv e70429ec1aa40325
+raster_fnv 204a7fe9a43a2125
+clusters:
+  0: area=1728 color=10,200,10,255 residue=10,200,10,255 rect=0,0,48,48 depth=0 holes=0 num_holes=0
+  1: area=2304 color=37,180,37,255 residue=120,120,120,255 rect=0,0,48,48 depth=1 holes=1728 num_holes=1
