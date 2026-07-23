@@ -11,7 +11,7 @@ pub use compound::*;
 pub use paths::*;
 //pub use reduce::*;
 pub use simplify::*;
-//pub use smooth::*;
+pub use smooth::SubdivideSmooth;
 pub use spline::*;
 pub use walker::*;
 pub use util::*;

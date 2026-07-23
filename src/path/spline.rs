@@ -81,7 +81,7 @@ impl Spline {
     /// Splice threshold is specified in radians.
     pub fn from_path_f64(path: &PathF64, splice_threshold: f64) -> Self {
         // First locate all the splice points
-        let splice_points = SubdivideSmooth::find_splice_points(&path, splice_threshold);
+        let splice_points = SubdivideSmooth::find_splice_points(&path, splice_threshold, true);
         let path = &path.path[0..path.len()-1];
         let len = path.len();
         if len<=1 {
@@ -115,7 +115,7 @@ impl Spline {
             let current = cut_points[i];
             let next = cut_points[j];
             let subpath = Self::get_circular_subpath(path, current, next);
-            let bezier_points = SubdivideSmooth::fit_points_with_bezier(&subpath);
+            let bezier_points = SubdivideSmooth::fit_points_with_bezier(&subpath, 10.0);
 
             // Only the first curve need to add the first point
             if i==0 {

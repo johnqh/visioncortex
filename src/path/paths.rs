@@ -250,10 +250,10 @@ impl PathI32 {
         &self, corner_threshold: f64, outset_ratio: f64, segment_length: f64, max_iterations: usize
     ) -> PathF64 {
         assert!(max_iterations > 0);
-        let mut corners = SubdivideSmooth::find_corners(self, corner_threshold);
+        let mut corners = SubdivideSmooth::find_corners(self, corner_threshold, true);
         let mut path = self.to_path_f64();
         for _i in 0..max_iterations {
-            let result = SubdivideSmooth::subdivide_keep_corners(&path, &corners, outset_ratio, segment_length);
+            let result = SubdivideSmooth::subdivide_keep_corners(&path, &corners, outset_ratio, segment_length, true);
             path = result.0;
             corners = result.1;
             if result.2 { // Can terminate early
@@ -269,10 +269,10 @@ impl PathF64 {
         &self, corner_threshold: f64, outset_ratio: f64, segment_length: f64, max_iterations: usize
     ) -> PathF64 {
         assert!(max_iterations > 0);
-        let mut corners = SubdivideSmooth::find_corners(self, corner_threshold);
+        let mut corners = SubdivideSmooth::find_corners(self, corner_threshold, true);
         let mut path = PathF64::new();
         for _i in 0..max_iterations {
-            let result = SubdivideSmooth::subdivide_keep_corners(self, &corners, outset_ratio, segment_length);
+            let result = SubdivideSmooth::subdivide_keep_corners(self, &corners, outset_ratio, segment_length, true);
             path = result.0;
             corners = result.1;
             if result.2 { // Can terminate early

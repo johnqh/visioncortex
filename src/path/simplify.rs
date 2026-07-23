@@ -2,7 +2,7 @@ use crate::{PathI32, PointI32};
 
 use super::util::signed_area;
 
-pub(crate) struct PathSimplify;
+pub struct PathSimplify;
 
 #[derive(Copy, Clone, Debug)]
 pub enum PathSimplifyMode {

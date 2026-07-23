@@ -1,22 +1,28 @@
 use crate::{Path, PathF64, PointF64, Point2};
 use flo_curves::{bezier, BezierCurveFactory};
 
-/// Handles Path Smoothing
-pub(crate) struct SubdivideSmooth;
+/// Handles Path Smoothing.
+///
+/// Every routine takes a `closed` flag. Closed paths (walked polygons) assume
+/// the last point repeats the first and index with wraparound. Open paths keep
+/// every point, never wrap, and force both endpoints as corners / splice points
+/// so that pinned endpoints (e.g. mosaic junction nodes) survive fitting.
+pub struct SubdivideSmooth;
 
 use super::util::{angle, find_intersection, find_mid_point, norm, normalize, signed_angle_difference};
 
 impl SubdivideSmooth {
 
-    /// Takes a path forming a polygon, returns a vector of bool representing its corners 
+    /// Takes a path, returns a vector of bool representing its corners
     /// (angle in radians bigger than or equal to threshold).
-    /// 
-    /// Note that the length of output is 1 less than that of the original path,
-    /// because the last point of the original path is always equal to the first point for paths of walked polygons (closed path)
-    pub fn find_corners<T>(path: &Path<Point2<T>>, threshold: f64) -> Vec<bool>
+    ///
+    /// For a closed path the last point is dropped (it repeats the first), so
+    /// the output length is one less than the input. For an open path every
+    /// point is kept and both endpoints are forced to be corners.
+    pub fn find_corners<T>(path: &Path<Point2<T>>, threshold: f64, closed: bool) -> Vec<bool>
     where T: std::ops::Add<Output = T> + std::ops::Sub<Output = T> + std::ops::Mul<Output = T> + Copy + Into<f64> {
 
-        let path = &path.path[0..(path.path.len()-1)];
+        let path = if closed { &path.path[0..(path.path.len()-1)] } else { &path.path[..] };
         let len = path.len();
         if len == 0 {
             return vec![];
@@ -24,6 +30,10 @@ impl SubdivideSmooth {
 
         let mut corners: Vec<bool> = vec![false; len];
         for i in 0..len {
+            if !closed && (i == 0 || i == len - 1) {
+                corners[i] = true; // endpoints pinned as corners
+                continue;
+            }
             let prev = if i==0 {len-1} else {i-1};
             let next = (i+1) % len;
 
@@ -43,14 +53,15 @@ impl SubdivideSmooth {
         corners
     }
 
-    /// Takes a smoothed path forming a polygon, returns a vector of bool
-    /// representing its splice points (angle displacement in radians bigger than threshold).
-    /// 
-    /// Note that the length of output is 1 less than that of the original path,
-    /// because the last point of the original path is always equal to the first point for paths of walked polygons (closed path).
-    pub fn find_splice_points(path: &PathF64, threshold: f64) -> Vec<bool> {
+    /// Takes a smoothed path, returns a vector of bool representing its splice
+    /// points (angle displacement in radians bigger than threshold).
+    ///
+    /// Closed paths drop the repeated last point and wrap. Open paths keep
+    /// every point and force both endpoints as splice points; angle
+    /// accumulation never crosses an endpoint.
+    pub fn find_splice_points(path: &PathF64, threshold: f64, closed: bool) -> Vec<bool> {
 
-        let path = &path.path[0..(path.path.len()-1)];
+        let path = if closed { &path.path[0..(path.path.len()-1)] } else { &path.path[..] };
         let len = path.len();
         if len == 0 {
             return vec![];
@@ -58,8 +69,14 @@ impl SubdivideSmooth {
 
         let mut splice_points: Vec<bool> = vec![false; len];
         let mut is_angle_increasing = false;
+        let mut started = false;
         let mut angle_disp = 0.0;
         for i in 0..len {
+            if !closed && (i == 0 || i == len - 1) {
+                splice_points[i] = true; // endpoints pinned as splice points
+                angle_disp = 0.0;
+                continue;
+            }
             let prev = if i==0 {len-1} else {i-1};
             let next = (i+1) % len;
 
@@ -73,8 +90,9 @@ impl SubdivideSmooth {
             let is_currently_increasing = angle_diff.is_sign_positive();
 
             // Test if this point is a point of inflection
-            if i==0 {
+            if !started {
                 is_angle_increasing = is_currently_increasing;
+                started = true;
             } else if is_angle_increasing != is_currently_increasing {
                 // This point is a point of inflection
                 splice_points[i] = true;
@@ -96,41 +114,45 @@ impl SubdivideSmooth {
         splice_points
     }
 
-    /// Takes a splice of points, returns 4 control points representing the approximating Bezier curve using a curve-fitter.
-    pub fn fit_points_with_bezier(points: &[PointF64]) -> [PointF64; 4] {
-            
-        let opt = bezier::Curve::fit_from_points(points, 10.0);
+    /// Takes a splice of points, returns 4 control points representing the
+    /// approximating Bezier curve. `max_error` bounds the fit deviation.
+    pub fn fit_points_with_bezier(points: &[PointF64], max_error: f64) -> [PointF64; 4] {
+
+        let opt = bezier::Curve::fit_from_points(points, max_error);
         match opt {
             None => [PointF64::default(),PointF64::default(),PointF64::default(),PointF64::default()],
             Some(curves) => {
-    
+
                 if curves.is_empty() {
                     return [PointF64::default(),PointF64::default(),PointF64::default(),PointF64::default()];
                 }
                 let curve = curves[0];
                 let p1 = points[0];
                 let p4 = points[points.len()-1];
-    
+
                 let (p2, p3) = curve.control_points;
-    
+
                 Self::retract_handles(&p1, &p2, &p3, &p4)
             }
         }
     }
 
-    /// Takes a path forming a polygon and a slice of bool representing corner positions.
-    /// 
-    /// Use the 4-point scheme to subdivide while keeping corners. 
-    /// `outset_ratio` determines the relative amount to expand outward. 
+    /// Takes a path and a slice of bool representing corner positions.
+    ///
+    /// Use the 4-point scheme to subdivide while keeping corners.
+    /// `outset_ratio` determines the relative amount to expand outward.
     /// This function will not attempt to divide segments <= `segment_length`.
-    /// 
+    ///
+    /// Closed paths wrap and re-close; open paths keep endpoints fixed and do
+    /// not add a closing point.
+    ///
     /// Returns a smoothed path, a Vec<bool> representing updated corner positions,
     /// and `true` when no further subdivision is needed.
     pub fn subdivide_keep_corners(
-        path: &PathF64, corners: &[bool], outset_ratio: f64, segment_length: f64
+        path: &PathF64, corners: &[bool], outset_ratio: f64, segment_length: f64, closed: bool
     ) -> (PathF64, Vec<bool>, bool) {
 
-        let path = &path.path[0..(path.path.len()-1)];
+        let path = if closed { &path.path[0..(path.path.len()-1)] } else { &path.path[..] };
         let len = path.len();
 
         let mut can_terminate_iteration = true;
@@ -142,12 +164,13 @@ impl SubdivideSmooth {
 
         for i in 0..len {
             new_path.push(PointF64 {x: path[i].x, y: path[i].y});
-            if corners[i] {
-                new_corners.push(true);
-            } else {
-                new_corners.push(false);
+            new_corners.push(corners[i]);
+
+            // Open paths have no segment leaving the last vertex.
+            if !closed && i == len - 1 {
+                continue;
             }
-            let j = (i+1)%len;
+            let j = if closed { (i+1)%len } else { i+1 };
 
             // Apply threshold on length of current segment
             let length_curr = norm(&(path[i] - path[j]));
@@ -155,8 +178,12 @@ impl SubdivideSmooth {
                 continue;
             }
 
-            let mut prev = if i==0 {len-1} else {i-1};
-            let mut next = (j+1)%len;
+            let mut prev = if closed {
+                if i==0 {len-1} else {i-1}
+            } else if i == 0 { i } else { i-1 };
+            let mut next = if closed {
+                (j+1)%len
+            } else if j == len-1 { j } else { j+1 };
 
             // Check ratio of adjacent segments
             let length_prev = norm(&(path[prev] - path[i]));
@@ -189,8 +216,10 @@ impl SubdivideSmooth {
             }
         }
 
-        // Close path
-        new_path.push(new_path[0]);
+        // Close path (closed paths only)
+        if closed {
+            new_path.push(new_path[0]);
+        }
 
         (PathF64::from_points(new_path), new_corners, can_terminate_iteration)
     }
@@ -231,5 +260,44 @@ impl SubdivideSmooth {
             }
         }
         [*a, *b, *c, *d]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{PathF64, PointF64};
+
+    fn p(x: f64, y: f64) -> PointF64 {
+        PointF64 { x, y }
+    }
+
+    #[test]
+    fn open_corners_force_endpoints() {
+        // A straight-ish open path with one sharp turn in the middle.
+        let path = PathF64::from_points(vec![p(0.0, 0.0), p(2.0, 0.0), p(2.0, 2.0)]);
+        let corners = SubdivideSmooth::find_corners(&path, std::f64::consts::FRAC_PI_2 - 0.1, false);
+        assert_eq!(corners.len(), 3, "open path keeps every point");
+        assert!(corners[0] && corners[2], "endpoints forced as corners");
+        assert!(corners[1], "the 90-degree turn is a corner");
+    }
+
+    #[test]
+    fn open_splice_forces_endpoints() {
+        let path = PathF64::from_points(vec![p(0.0, 0.0), p(1.0, 0.0), p(2.0, 0.0)]);
+        let splice = SubdivideSmooth::find_splice_points(&path, 1.0, false);
+        assert_eq!(splice.len(), 3);
+        assert!(splice[0] && splice[2], "endpoints forced as splice points");
+    }
+
+    #[test]
+    fn open_subdivide_preserves_endpoints() {
+        let path = PathF64::from_points(vec![p(0.0, 0.0), p(10.0, 0.0), p(10.0, 10.0)]);
+        let corners = SubdivideSmooth::find_corners(&path, 1.0, false);
+        let (out, _c, _done) =
+            SubdivideSmooth::subdivide_keep_corners(&path, &corners, 8.0, 1.0, false);
+        assert_eq!(out.path.first().copied(), Some(p(0.0, 0.0)), "start pinned");
+        assert_eq!(out.path.last().copied(), Some(p(10.0, 10.0)), "end pinned");
+        assert!(out.path.len() >= path.len(), "subdivision only adds points");
     }
 }
