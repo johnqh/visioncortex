@@ -1,3 +1,11 @@
+//! Polygon triangulation (ear-clipping, monotone, optimal dynamic programming)
+//! and hole removal.
+//!
+//! Rust port of PolyPartition by Ivan Fratric
+//! (<https://github.com/ivanfratric/polypartition>), via
+//! <https://github.com/visioncortex/polypartition>. Licensed MIT; see the
+//! `polypartition` section of `Attributions.md` for the original copyright.
+
 mod hole;
 mod enums;
 mod polygon;
