@@ -14,6 +14,7 @@ pub mod bound;
 pub mod clusters;
 pub mod color_clusters;
 pub mod disjoint_sets;
+pub mod polypartition;
 pub mod tile_map;
 
 // pub use color_clusters;
