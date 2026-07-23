@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use crate::{BinaryImage, BoundingRect, Color, ColorImage, ColorSum, CompoundPath, PointI32, PathSimplifyMode, Shape};
 use crate::clusters::Cluster as BinaryCluster;
 use super::container::{ClusterIndex, ClustersView};
-use super::builder::{BuilderImpl, ZERO};
+use super::builder::ZERO;
 
 #[derive(Clone, Default)]
 pub struct Cluster {
@@ -46,15 +46,9 @@ impl Cluster {
     pub fn perimeter(&self, parent: &ClustersView) -> u32 {
         Shape::image_boundary_list(&self.to_image(parent)).len() as u32
     }
-    pub(crate) fn perimeter_internal(&self, internal: &BuilderImpl) -> u32 {
-        Shape::image_boundary_list(&self.to_image_internal(internal)).len() as u32
-    }
 
     pub fn to_image(&self, parent: &ClustersView) -> BinaryImage {
         self.to_image_with_hole(parent.width, true)
-    }
-    fn to_image_internal(&self, internal: &BuilderImpl) -> BinaryImage {
-        self.to_image_with_hole(internal.width, true)
     }
 
     pub fn to_image_with_hole(&self, parent_width: u32, hole: bool) -> BinaryImage {
@@ -164,9 +158,4 @@ impl Cluster {
         neighbours_impl!(self, parent, parent.get_cluster_at(*self.indices.first().unwrap()))
     }
 
-    /// Equivalent to [`neighbours()`] but operates on `BuilderImpl` directly,
-    /// removing the overhead of constructing a `ClustersView`
-    pub(crate) fn neighbours_internal(&self, internal: &BuilderImpl) -> Vec<ClusterIndex> {
-        neighbours_impl!(self, internal, internal.cluster_indices[*self.indices.first().unwrap() as usize])
-    }
 }

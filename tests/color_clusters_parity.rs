@@ -52,7 +52,7 @@ fn img_blocks(w: usize, h: usize, block: usize) -> ColorImage {
         Color::new(20, 20, 20),
     ];
     let mut im = ColorImage::new_w_h(w, h);
-    let cols = (w + block - 1) / block;
+    let cols = w.div_ceil(block);
     for y in 0..h {
         for x in 0..w {
             let bi = (y / block) * cols + (x / block);
@@ -69,7 +69,7 @@ fn img_checker(w: usize, h: usize, cell: usize) -> ColorImage {
     let mut im = ColorImage::new_w_h(w, h);
     for y in 0..h {
         for x in 0..w {
-            let on = ((x / cell) + (y / cell)) % 2 == 0;
+            let on = ((x / cell) + (y / cell)).is_multiple_of(2);
             im.set_pixel(x, y, if on { &a } else { &b });
         }
     }
@@ -83,7 +83,7 @@ fn img_diagonal(w: usize, h: usize, period: usize) -> ColorImage {
     let mut im = ColorImage::new_w_h(w, h);
     for y in 0..h {
         for x in 0..w {
-            let on = ((x + y) / period) % 2 == 0;
+            let on = ((x + y) / period).is_multiple_of(2);
             im.set_pixel(x, y, if on { &a } else { &b });
         }
     }
@@ -122,7 +122,7 @@ fn img_keyed(w: usize, h: usize, key: Color) -> ColorImage {
     let (x0, y0, x1, y1) = (w / 4, h / 4, 3 * w / 4, 3 * h / 4);
     for y in y0..y1 {
         for x in x0..x1 {
-            let c = if (x + y) % 2 == 0 {
+            let c = if (x + y).is_multiple_of(2) {
                 Color::new(200, 120, 40)
             } else {
                 Color::new(40, 120, 200)
@@ -227,6 +227,7 @@ fn base_config() -> RunnerConfig {
 }
 
 /// Build all (name, image, config, with_svg) cases exercising every closure.
+#[allow(clippy::vec_init_then_push)] // one push per case keeps the matrix readable
 fn cases() -> Vec<(String, ColorImage, RunnerConfig, bool)> {
     let mut v: Vec<(String, ColorImage, RunnerConfig, bool)> = Vec::new();
 

@@ -36,27 +36,31 @@ pub struct NeighbourInfo {
     pub diff: i32,
 }
 
-type Cmp = Box<dyn Fn(Color, Color) -> bool>;
-type Diff = Box<dyn Fn(Color, Color) -> i32>;
-type Deepen = Box<dyn Fn(&BuilderImpl, &Cluster, &[NeighbourInfo]) -> bool>;
-type Hollow = Box<dyn Fn(&BuilderImpl, &Cluster, &[NeighbourInfo]) -> bool>;
-
 /// the 0th cluster is reserved for internal use
 pub const ZERO: ClusterIndex = ClusterIndex(0);
 pub const HIERARCHICAL_MAX: u32 = std::u32::MAX;
 
-#[derive(Default)]
-pub struct Builder {
+/// Builds [`Clusters`] from a [`ColorImage`], parameterised over the four
+/// user-supplied closures. Use [`Builder::new`] and set every closure before
+/// calling [`run`](Builder::run)/[`start`](Builder::start); the type parameters
+/// start as `()` placeholders, so forgetting a closure is a compile error rather
+/// than a runtime panic.
+///
+/// - `C`: `Fn(Color, Color) -> bool` — whether two colors are the "same".
+/// - `D`: `Fn(Color, Color) -> i32` — color difference metric.
+/// - `P`: `Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool` — deepen.
+/// - `H`: `Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool` — hollow.
+pub struct Builder<C, D, P, H> {
     pub(crate) conf: BuilderConfig,
-    pub(crate) same: Option<Cmp>,
-    pub(crate) diff: Option<Diff>,
-    pub(crate) deepen: Option<Deepen>,
-    pub(crate) hollow: Option<Hollow>,
+    pub(crate) same: C,
+    pub(crate) diff: D,
+    pub(crate) deepen: P,
+    pub(crate) hollow: H,
     pub(crate) image: Option<ColorImage>,
 }
 
-pub struct IncrementalBuilder {
-    builder_impl: Option<Box<BuilderImpl>>,
+pub struct IncrementalBuilder<C, D, P, H> {
+    builder_impl: Option<Box<BuilderImpl<C, D, P, H>>>,
 }
 
 macro_rules! config_setter {
@@ -68,33 +72,29 @@ macro_rules! config_setter {
     };
 }
 
-macro_rules! closure_setter {
-    ($name:ident, $t:path) => {
-        pub fn $name(mut self, $name: impl $t + 'static) -> Self {
-            self.$name = Some(Box::new($name));
-            self
+impl Builder<(), (), (), ()> {
+    pub fn new() -> Self {
+        Self {
+            conf: BuilderConfig::default(),
+            same: (),
+            diff: (),
+            deepen: (),
+            hollow: (),
+            image: None,
         }
-    };
+    }
 }
 
-impl Builder {
-    pub fn new() -> Self {
-        Self::default()
+impl Default for Builder<(), (), (), ()> {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
+impl<C, D, P, H> Builder<C, D, P, H> {
     pub fn from(mut self, image: ColorImage) -> Self {
         self.image = Some(image);
         self
-    }
-
-    pub fn run(self) -> Clusters {
-        let mut bimpl = BuilderImpl::from(self);
-        while !bimpl.tick() {}
-        bimpl.result()
-    }
-
-    pub fn start(self) -> IncrementalBuilder {
-        IncrementalBuilder::new(BuilderImpl::from(self))
     }
 
     config_setter!(diagonal, bool);
@@ -103,14 +103,92 @@ impl Builder {
     config_setter!(key, Color);
     config_setter!(keying_action, KeyingAction);
 
-    closure_setter!(same, Fn(Color, Color) -> bool);
-    closure_setter!(diff, Fn(Color, Color) -> i32);
-    closure_setter!(deepen, Fn(&BuilderImpl, &Cluster, &[NeighbourInfo]) -> bool);
-    closure_setter!(hollow, Fn(&BuilderImpl, &Cluster, &[NeighbourInfo]) -> bool);
+    /// Sets the "same color" predicate, changing the `C` type parameter.
+    pub fn same<C2>(self, same: C2) -> Builder<C2, D, P, H>
+    where
+        C2: Fn(Color, Color) -> bool,
+    {
+        Builder { conf: self.conf, same, diff: self.diff, deepen: self.deepen, hollow: self.hollow, image: self.image }
+    }
+
+    /// Sets the color difference metric, changing the `D` type parameter.
+    pub fn diff<D2>(self, diff: D2) -> Builder<C, D2, P, H>
+    where
+        D2: Fn(Color, Color) -> i32,
+    {
+        Builder { conf: self.conf, same: self.same, diff, deepen: self.deepen, hollow: self.hollow, image: self.image }
+    }
+
+    /// Sets the deepen predicate, changing the `P` type parameter.
+    pub fn deepen<P2>(self, deepen: P2) -> Builder<C, D, P2, H>
+    where
+        P2: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+    {
+        Builder { conf: self.conf, same: self.same, diff: self.diff, deepen, hollow: self.hollow, image: self.image }
+    }
+
+    /// Sets the hollow predicate, changing the `H` type parameter.
+    pub fn hollow<H2>(self, hollow: H2) -> Builder<C, D, P, H2>
+    where
+        H2: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+    {
+        Builder { conf: self.conf, same: self.same, diff: self.diff, deepen: self.deepen, hollow, image: self.image }
+    }
 }
 
-impl IncrementalBuilder {
-    fn new(builder_impl: BuilderImpl) -> Self {
+impl<C, D, P, H> Builder<C, D, P, H>
+where
+    C: Fn(Color, Color) -> bool,
+    D: Fn(Color, Color) -> i32,
+    P: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+    H: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+{
+    pub fn run(self) -> Clusters {
+        let mut bimpl = self.into_impl();
+        while !bimpl.tick() {}
+        bimpl.result()
+    }
+
+    pub fn start(self) -> IncrementalBuilder<C, D, P, H> {
+        IncrementalBuilder::new(self.into_impl())
+    }
+
+    fn into_impl(self) -> BuilderImpl<C, D, P, H> {
+        let im = self.image.expect("Builder::from(image) must be called before run()/start()");
+        let len = im.pixels.len();
+
+        BuilderImpl {
+            diagonal: self.conf.diagonal,
+            hierarchical: self.conf.hierarchical,
+            batch_size: self.conf.batch_size,
+            key: self.conf.key,
+            keying_action: self.conf.keying_action,
+            same: self.same,
+            diff: self.diff,
+            deepen: self.deepen,
+            hollow: self.hollow,
+            width: im.width as u32,
+            height: im.height as u32,
+            pixels: im.pixels,
+            clusters: vec![Cluster::new()],
+            cluster_indices: vec![Default::default(); len / 4],
+            cluster_areas: Vec::new(),
+            clusters_output: Vec::new(),
+            stage: 1,
+            iteration: 0,
+            next_index: ClusterIndex(1),
+        }
+    }
+}
+
+impl<C, D, P, H> IncrementalBuilder<C, D, P, H>
+where
+    C: Fn(Color, Color) -> bool,
+    D: Fn(Color, Color) -> i32,
+    P: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+    H: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+{
+    fn new(builder_impl: BuilderImpl<C, D, P, H>) -> Self {
         Self {
             builder_impl: Some(Box::new(builder_impl))
         }
@@ -145,16 +223,16 @@ struct Area {
     pub count: usize,
 }
 
-pub struct BuilderImpl {
+pub struct BuilderImpl<C, D, P, H> {
     diagonal: bool,
     hierarchical: u32,
     batch_size: u32,
     key: Color,
     keying_action: KeyingAction,
-    same: Cmp,
-    diff: Diff,
-    deepen: Deepen,
-    hollow: Hollow,
+    same: C,
+    diff: D,
+    deepen: P,
+    hollow: H,
     pub(crate) width: u32,
     pub(crate) height: u32,
     pixels: Vec<u8>,           // raw bytes from getImageData; 4 bytes as a pixel
@@ -167,37 +245,13 @@ pub struct BuilderImpl {
     next_index: ClusterIndex,
 }
 
-impl From<Builder> for BuilderImpl {
-
-    fn from(mut b: Builder) -> Self {
-        let im = b.image.unwrap();
-        let len = im.pixels.len();
-
-        Self {
-            diagonal: b.conf.diagonal,
-            hierarchical: b.conf.hierarchical,
-            batch_size: b.conf.batch_size,
-            key: b.conf.key,
-            keying_action: b.conf.keying_action,
-            same: b.same.take().unwrap(),
-            diff: b.diff.take().unwrap(),
-            deepen: b.deepen.take().unwrap(),
-            hollow: b.hollow.take().unwrap(),
-            width: im.width as u32,
-            height: im.height as u32,
-            pixels: im.pixels,
-            clusters: vec![Cluster::new()],
-            cluster_indices: vec![Default::default(); len / 4],
-            cluster_areas: Vec::new(),
-            clusters_output: Vec::new(),
-            stage: 1,
-            iteration: 0,
-            next_index: ClusterIndex(1),
-        }
-    }
-}
-
-impl BuilderImpl {
+impl<C, D, P, H> BuilderImpl<C, D, P, H>
+where
+    C: Fn(Color, Color) -> bool,
+    D: Fn(Color, Color) -> i32,
+    P: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+    H: Fn(&ClustersView, &Cluster, &[NeighbourInfo]) -> bool,
+{
     pub fn tick(&mut self) -> bool {
         match self.stage {
             1 => {
@@ -433,7 +487,7 @@ impl BuilderImpl {
 
             let mycolor = mycluster.color();
             let mut infos: Vec<_> = mycluster
-                .neighbours_internal(self)
+                .neighbours(&self.view())
                 .iter()
                 .map(|other| NeighbourInfo {
                     index: *other,
@@ -454,11 +508,11 @@ impl BuilderImpl {
             let target = infos[0].index;
 
             let deepen = if self.hierarchical == HIERARCHICAL_MAX {
-                (self.deepen)(self, self.get_cluster(index), &infos)
+                (self.deepen)(&self.view(), self.get_cluster(index), &infos)
             } else {
                 false
             };
-            let hollow = (self.hollow)(self, self.get_cluster(index), &infos);
+            let hollow = (self.hollow)(&self.view(), self.get_cluster(index), &infos);
 
             if deepen {
                 self.clusters_output.push(index);
