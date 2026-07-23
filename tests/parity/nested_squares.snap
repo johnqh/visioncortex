@@ -1,0 +1,19 @@
+case nested_squares
+size 48x48
+output_len 6
+cluster_indices_fnv bfae6c171527c325
+raster_fnv 702112c540d0d624
+clusters:
+  0: area=49 color=230,230,230,255 residue=230,230,230,255 rect=21,21,28,28 depth=0 holes=0 num_holes=0
+  1: area=225 color=69,69,69,255 residue=25,25,25,255 rect=17,17,32,32 depth=1 holes=49 num_holes=1
+  2: area=432 color=25,25,25,255 residue=25,25,25,255 rect=9,9,40,40 depth=0 holes=0 num_holes=0
+  3: area=560 color=230,230,230,255 residue=230,230,230,255 rect=5,5,44,44 depth=0 holes=0 num_holes=0
+  4: area=783 color=49,49,49,255 residue=49,49,49,255 rect=0,0,48,48 depth=0 holes=0 num_holes=0
+  5: area=2304 color=114,114,114,255 residue=230,230,230,255 rect=0,0,48,48 depth=4 holes=1008 num_holes=2
+svg:
+  0: M0,0 L7,0 L7,7 L0,7 Z 
+  1: M0,0 L15,0 L15,15 L0,15 Z M4,4 L4,11 L11,11 L11,4 Z 
+  2: M0,0 L31,0 L31,31 L0,31 Z M4,4 L4,27 L27,27 L27,4 Z 
+  3: M0,0 L39,0 L39,39 L0,39 Z M4,4 L4,35 L35,35 L35,4 Z 
+  4: M0,0 L48,0 L48,48 L0,48 Z M5,5 L5,44 L44,44 L44,5 Z 
+  5: M0,0 L39,0 L39,39 L0,39 Z M12,12 L12,27 L27,27 L27,12 Z 

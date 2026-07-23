@@ -1,0 +1,17 @@
+case gradient_noise
+size 48x40
+output_len 11
+cluster_indices_fnv e5478e001f665b25
+raster_fnv a34bb971e067ecda
+clusters:
+  0: area=77 color=234,177,139,255 residue=234,177,139,255 rect=35,21,48,32 depth=0 holes=0 num_holes=0
+  1: area=123 color=151,90,145,255 residue=151,90,145,255 rect=19,6,36,21 depth=0 holes=0 num_holes=0
+  2: area=145 color=37,224,145,255 residue=37,224,145,255 rect=0,25,13,40 depth=0 holes=0 num_holes=0
+  3: area=159 color=104,40,143,255 residue=104,40,143,255 rect=9,0,28,15 depth=0 holes=0 num_holes=0
+  4: area=181 color=220,232,140,255 residue=220,232,140,255 rect=27,28,48,40 depth=0 holes=0 num_holes=0
+  5: area=214 color=211,42,141,255 residue=211,42,141,255 rect=24,0,48,12 depth=0 holes=0 num_holes=0
+  6: area=261 color=69,143,142,255 residue=69,143,142,255 rect=0,11,23,31 depth=0 holes=0 num_holes=0
+  7: area=413 color=227,178,141,255 residue=232,116,144,255 rect=27,7,48,40 depth=2 holes=0 num_holes=0
+  8: area=449 color=97,215,145,255 residue=125,210,144,255 rect=0,19,34,40 depth=1 holes=0 num_holes=0
+  9: area=887 color=205,129,142,255 residue=180,152,144,255 rect=19,0,48,40 depth=3 holes=0 num_holes=0
+  10: area=1920 color=139,138,143,255 residue=39,60,143,255 rect=0,0,48,40 depth=4 holes=887 num_holes=1

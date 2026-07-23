@@ -133,6 +133,118 @@ fn img_keyed(w: usize, h: usize, key: Color) -> ColorImage {
     im
 }
 
+/// A single flat color (degenerate: collapses to one cluster).
+fn img_solid(w: usize, h: usize, c: Color) -> ColorImage {
+    let mut im = ColorImage::new_w_h(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            im.set_pixel(x, y, &c);
+        }
+    }
+    im
+}
+
+/// Two solid halves split down the middle.
+fn img_halves(w: usize, h: usize) -> ColorImage {
+    let a = Color::new(200, 60, 60);
+    let b = Color::new(60, 60, 200);
+    let mut im = ColorImage::new_w_h(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            im.set_pixel(x, y, if x < w / 2 { &a } else { &b });
+        }
+    }
+    im
+}
+
+/// Concentric square rings — produces nested clusters and holes (hollow path).
+fn img_nested_squares(w: usize, h: usize, ring: usize) -> ColorImage {
+    let a = Color::new(230, 230, 230);
+    let b = Color::new(25, 25, 25);
+    let mut im = ColorImage::new_w_h(w, h);
+    let (cx, cy) = (w as i32 / 2, h as i32 / 2);
+    for y in 0..h {
+        for x in 0..w {
+            let d = ((x as i32 - cx).abs()).max((y as i32 - cy).abs()) as usize;
+            im.set_pixel(x, y, if (d / ring).is_multiple_of(2) { &a } else { &b });
+        }
+    }
+    im
+}
+
+/// Concentric circular rings.
+fn img_radial(w: usize, h: usize, ring: usize) -> ColorImage {
+    let a = Color::new(40, 200, 120);
+    let b = Color::new(200, 40, 120);
+    let mut im = ColorImage::new_w_h(w, h);
+    let (cx, cy) = (w as f64 / 2.0, h as f64 / 2.0);
+    for y in 0..h {
+        for x in 0..w {
+            let dx = x as f64 - cx;
+            let dy = y as f64 - cy;
+            let r = (dx * dx + dy * dy).sqrt() as usize;
+            im.set_pixel(x, y, if (r / ring).is_multiple_of(2) { &a } else { &b });
+        }
+    }
+    im
+}
+
+/// Vertical stripes.
+fn img_stripes_v(w: usize, h: usize, period: usize) -> ColorImage {
+    let a = Color::new(210, 210, 40);
+    let b = Color::new(40, 40, 40);
+    let mut im = ColorImage::new_w_h(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            im.set_pixel(x, y, if (x / period).is_multiple_of(2) { &a } else { &b });
+        }
+    }
+    im
+}
+
+/// A background with thin 1px cross-hatch lines (exercises the thread-like /
+/// perimeter>=area branch of `patch_good`).
+fn img_thin_lines(w: usize, h: usize, spacing: usize) -> ColorImage {
+    let bg = Color::new(20, 20, 20);
+    let line = Color::new(230, 230, 230);
+    let mut im = ColorImage::new_w_h(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let on = x.is_multiple_of(spacing) || y.is_multiple_of(spacing);
+            im.set_pixel(x, y, if on { &line } else { &bg });
+        }
+    }
+    im
+}
+
+/// A gradient with additive pseudo-random noise.
+fn img_gradient_noise(w: usize, h: usize, seed: u64) -> ColorImage {
+    let mut state = seed;
+    let mut jitter = || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((state >> 58) as i32) - 16 // roughly [-16, 15]
+    };
+    let mut im = ColorImage::new_w_h(w, h);
+    let clamp = |v: i32| v.clamp(0, 255) as u8;
+    for y in 0..h {
+        for x in 0..w {
+            let base = (x * 255 / w.max(1)) as i32;
+            im.set_pixel(
+                x,
+                y,
+                &Color::new(
+                    clamp(base + jitter()),
+                    clamp((y * 255 / h.max(1)) as i32 + jitter()),
+                    clamp(128 + jitter()),
+                ),
+            );
+        }
+    }
+    im
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic FNV-1a hash for the large per-pixel arrays
 // ---------------------------------------------------------------------------
@@ -336,6 +448,86 @@ fn cases() -> Vec<(String, ColorImage, RunnerConfig, bool)> {
         RunnerConfig { hierarchical: 0, ..base_config() },
         false,
     ));
+
+    // --- additional synthetic coverage (procedural inputs are free) ---
+
+    // solid color: degenerate single-cluster path.
+    v.push(("solid".into(), img_solid(40, 40, Color::new(90, 140, 190)), base_config(), false));
+
+    // two halves.
+    v.push(("halves".into(), img_halves(48, 40), base_config(), false));
+
+    // nested squares: strong hole / hollow coverage (also snapshot SVG).
+    v.push(("nested_squares".into(), img_nested_squares(48, 48, 4), base_config(), true));
+
+    // nested squares with hollow disabled.
+    v.push((
+        "nested_squares_no_hollow".into(),
+        img_nested_squares(48, 48, 4),
+        RunnerConfig { hollow_neighbours: 0, ..base_config() },
+        false,
+    ));
+
+    // radial rings, diagonal on (curved boundaries).
+    v.push((
+        "radial_diagonal".into(),
+        img_radial(48, 48, 5),
+        RunnerConfig { diagonal: true, ..base_config() },
+        false,
+    ));
+
+    // vertical stripes.
+    v.push(("stripes_v".into(), img_stripes_v(48, 40, 3), base_config(), false));
+
+    // thin cross-hatch lines: thread-like clusters exercise patch_good's
+    // perimeter>=area branch.
+    v.push(("thin_lines".into(), img_thin_lines(48, 48, 6), base_config(), false));
+
+    // thin lines with good_min_area=0 (patch_good's good_min_area==0 branch).
+    v.push((
+        "thin_lines_minarea0".into(),
+        img_thin_lines(48, 48, 6),
+        RunnerConfig { good_min_area: 0, ..base_config() },
+        false,
+    ));
+
+    // gradient with noise.
+    v.push(("gradient_noise".into(), img_gradient_noise(48, 40, 0xdead_beef), base_config(), false));
+
+    // small batch_size forces multiple stage-1 batches (must not change output).
+    v.push((
+        "blocks_batch7".into(),
+        img_blocks(48, 48, 8),
+        RunnerConfig { batch_size: 7, ..base_config() },
+        false,
+    ));
+
+    // batch_size of 1 (pathological chunking; output must be unchanged).
+    v.push((
+        "checker_batch1".into(),
+        img_checker(32, 32, 4),
+        RunnerConfig { batch_size: 1, ..base_config() },
+        false,
+    ));
+
+    // very large deepen_diff => deepen almost always false.
+    v.push((
+        "random_high_deepen".into(),
+        img_random(48, 48, 0x0bad_f00d),
+        RunnerConfig { deepen_diff: 100_000, ..base_config() },
+        false,
+    ));
+
+    // tight same-color threshold => many small clusters.
+    v.push((
+        "random_tight".into(),
+        img_random(48, 48, 0x0bad_f00d),
+        RunnerConfig { is_same_color_a: 2, is_same_color_b: 0, ..base_config() },
+        false,
+    ));
+
+    // larger random field.
+    v.push(("random_64".into(), img_random(64, 64, 0xfeed_face), base_config(), false));
 
     // explicit HIERARCHICAL_MAX (default, but pinned for clarity).
     let _ = HIERARCHICAL_MAX;

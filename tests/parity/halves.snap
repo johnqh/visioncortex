@@ -1,0 +1,8 @@
+case halves
+size 48x40
+output_len 2
+cluster_indices_fnv ce5aec3bc48acb25
+raster_fnv 2b5ce6d5175e5b25
+clusters:
+  0: area=960 color=200,60,60,255 residue=200,60,60,255 rect=0,0,24,40 depth=0 holes=0 num_holes=0
+  1: area=1920 color=130,60,130,255 residue=60,60,200,255 rect=0,0,48,40 depth=1 holes=960 num_holes=1

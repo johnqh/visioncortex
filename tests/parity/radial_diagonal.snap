@@ -1,0 +1,16 @@
+case radial_diagonal
+size 48x48
+output_len 10
+cluster_indices_fnv b7209fc1bb951325
+raster_fnv d08ac79ddc1e66d1
+clusters:
+  0: area=23 color=40,200,120,255 residue=40,200,120,255 rect=0,0,7,7 depth=0 holes=0 num_holes=0
+  1: area=69 color=40,200,120,255 residue=40,200,120,255 rect=20,20,29,29 depth=0 holes=0 num_holes=0
+  2: area=80 color=180,60,120,255 residue=180,60,120,255 rect=34,34,48,48 depth=0 holes=0 num_holes=0
+  3: area=97 color=173,66,120,255 residue=173,66,120,255 rect=31,0,48,15 depth=0 holes=0 num_holes=0
+  4: area=97 color=173,66,120,255 residue=173,66,120,255 rect=0,31,15,48 depth=0 holes=0 num_holes=0
+  5: area=115 color=168,72,120,255 residue=200,40,120,255 rect=0,0,18,18 depth=1 holes=23 num_holes=1
+  6: area=305 color=163,76,120,255 residue=200,40,120,255 rect=15,15,34,34 depth=1 holes=69 num_holes=1
+  7: area=548 color=200,40,120,255 residue=200,40,120,255 rect=5,5,44,44 depth=0 holes=0 num_holes=0
+  8: area=1059 color=88,151,120,255 residue=40,200,120,255 rect=0,0,48,48 depth=4 holes=389 num_holes=4
+  9: area=2304 color=116,123,120,255 residue=40,200,120,255 rect=0,0,48,48 depth=3 holes=1364 num_holes=2

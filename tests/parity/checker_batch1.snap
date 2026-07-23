@@ -1,0 +1,7 @@
+case checker_batch1
+size 32x32
+output_len 1
+cluster_indices_fnv 64d9e1a82fa92325
+raster_fnv ab926f0c2727d325
+clusters:
+  0: area=1024 color=125,125,125,255 residue=125,125,125,255 rect=0,0,32,32 depth=0 holes=0 num_holes=0

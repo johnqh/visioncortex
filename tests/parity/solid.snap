@@ -1,0 +1,7 @@
+case solid
+size 40x40
+output_len 1
+cluster_indices_fnv 38600ac0c31e1b25
+raster_fnv 5fb9810cfeb46e25
+clusters:
+  0: area=1600 color=90,140,190,255 residue=90,140,190,255 rect=0,0,40,40 depth=0 holes=0 num_holes=0
