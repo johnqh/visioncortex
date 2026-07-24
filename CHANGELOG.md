@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.9.0 - 2026-07-24
+
+* Added the `polypartition` module: polygon triangulation (ear-clipping,
+  monotone, optimal dynamic programming) and hole removal, ported from
+  [PolyPartition](https://github.com/ivanfratric/polypartition) by Ivan Fratric
+* Made `SubdivideSmooth` public and added open-path (open polyline) variants of
+  `find_corners`, `find_splice_points`, and `subdivide_keep_corners`;
+  `fit_points_with_bezier` now takes a configurable `max_error` (closed-path
+  behaviour unchanged)
+* **Breaking:** `color_clusters::Builder`, `BuilderImpl`, and
+  `IncrementalBuilder` are now generic over their four closure types instead of
+  storing `Box<dyn Fn>`, so the hot `same`/`diff` closures are monomorphised and
+  inlined
+* **Breaking:** the `deepen`/`hollow` closures now receive `&ClustersView`
+  instead of `&BuilderImpl`
+* **Breaking:** `color_clusters::Builder` is now a type-state builder — every
+  closure must be set before `run()`/`start()`, which is now enforced at compile
+  time instead of panicking at runtime
+
 ## 0.8.9 - 2025-10-17
 
 * Fixes potential panics
