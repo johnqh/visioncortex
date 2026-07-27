@@ -109,20 +109,25 @@ impl Spline {
         let num_cut_points = cut_points.len();
 
         let mut result = Self::new(PointF64 {x:0.0,y:0.0}); // Dummy initialization
+        let mut first = true;
         for i in 0..num_cut_points {
             let j = (i+1)%num_cut_points;
 
             let current = cut_points[i];
             let next = cut_points[j];
             let subpath = Self::get_circular_subpath(path, current, next);
-            let bezier_points = SubdivideSmooth::fit_points_with_bezier(&subpath, 10.0);
-
-            // Only the first curve need to add the first point
-            if i==0 {
-                result = Self::new(bezier_points[0]);
+            // A slice may legitimately need several cubics (e.g. a short jog
+            // followed by a long straight run); keep the whole chain instead
+            // of stretching the first fragment across the slice.
+            for bezier_points in SubdivideSmooth::fit_points_with_beziers(&subpath, 10.0) {
+                // Only the very first curve need to add the first point
+                if first {
+                    result = Self::new(bezier_points[0]);
+                    first = false;
+                }
+                // Subsequent curves take their first point from previous curve's last point
+                result.add(bezier_points[1], bezier_points[2], bezier_points[3]);
             }
-            // Subsequent curves take their first point from previous curve's last point
-            result.add(bezier_points[1], bezier_points[2], bezier_points[3]);
         }
 
         result
@@ -187,6 +192,33 @@ impl Spline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PathF64;
+
+    /// End-to-end through the splice/fit assembly: a thin sliver whose long
+    /// wall is a sparse slice (a shallow 3 px jog, then a 161 px straight
+    /// leg — the turn is too shallow to splice). Every emitted control point
+    /// must stay near the outline, and the spline must stay structurally
+    /// valid (1 + 3n points).
+    #[test]
+    fn from_path_f64_sparse_slice_stays_near_data() {
+        let pts = vec![
+            PointF64 { x: 147.0, y: 165.0 },
+            PointF64 { x: 149.0, y: 168.0 },
+            PointF64 { x: 150.0, y: 329.0 },
+            PointF64 { x: 147.0, y: 329.0 },
+            PointF64 { x: 147.0, y: 165.0 }, // closed: last repeats first
+        ];
+        let path = PathF64::from_points(pts);
+        let spline = Spline::from_path_f64(&path, std::f64::consts::FRAC_PI_4);
+
+        assert_eq!((spline.len() - 1) % 3, 0, "valid 1+3n spline");
+        for q in spline.iter() {
+            assert!(
+                q.x >= 137.0 && q.x <= 160.0 && q.y >= 155.0 && q.y <= 339.0,
+                "control point {q:?} strays from the outline"
+            );
+        }
+    }
 
     #[test]
     fn test_spline_to_svg() {

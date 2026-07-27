@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.9.1 - 2026-07-27
+
+* Fixed cubic Bezier fitting swinging far away from the input on sparse,
+  unevenly spaced slices (e.g. a 3 px jog followed by a 160 px straight leg —
+  real walker output): the fit error was only measured at the sample points,
+  so a lone cubic could interpolate every sample while ballooning between
+  them. `fit_points_with_beziers` densifies the slice with witness points and
+  returns the full multi-curve chain (welded and endpoint-pinned) instead of
+  truncating to the first fragment; `Spline::from_path_f64` now keeps every
+  cubic of the chain. The single-curve `fit_points_with_bezier` is kept for
+  compatibility but its truncation caveat is documented.
+
 ## 0.9.0 - 2026-07-24
 
 * Added the `polypartition` module: polygon triangulation (ear-clipping,

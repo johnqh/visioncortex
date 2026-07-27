@@ -116,6 +116,14 @@ impl SubdivideSmooth {
 
     /// Takes a splice of points, returns 4 control points representing the
     /// approximating Bezier curve. `max_error` bounds the fit deviation.
+    ///
+    /// Truncates to a single curve even when the points cannot be approximated
+    /// by one cubic within `max_error` — the first fitted fragment's handles
+    /// get stretched across the whole slice, which can swing the curve far
+    /// away from the input. Prefer [`fit_points_with_beziers`], which returns
+    /// every cubic of the fit.
+    ///
+    /// [`fit_points_with_beziers`]: Self::fit_points_with_beziers
     pub fn fit_points_with_bezier(points: &[PointF64], max_error: f64) -> [PointF64; 4] {
 
         let opt = bezier::Curve::fit_from_points(points, max_error);
@@ -135,6 +143,71 @@ impl SubdivideSmooth {
                 Self::retract_handles(&p1, &p2, &p3, &p4)
             }
         }
+    }
+
+    /// Insert evenly spaced witness points along any segment longer than
+    /// `spacing`, so the fit's error metric — which only measures at the
+    /// sample points — cannot miss a deviation between two far-apart samples.
+    fn densify(points: &[PointF64], spacing: f64) -> Vec<PointF64> {
+        let mut out: Vec<PointF64> = Vec::with_capacity(points.len());
+        for w in points.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            out.push(a);
+            let d = norm(&(b - a));
+            let n = (d / spacing).ceil() as usize;
+            for k in 1..n {
+                let t = k as f64 / n as f64;
+                out.push(PointF64 {
+                    x: a.x + (b.x - a.x) * t,
+                    y: a.y + (b.y - a.y) * t,
+                });
+            }
+        }
+        out.push(points[points.len()-1]);
+        out
+    }
+
+    /// Takes a splice of points, returns the full chain of cubic Beziers that
+    /// approximates it within `max_error` — one `[start, ctrl1, ctrl2, end]`
+    /// per curve, sharing endpoints, with the outer endpoints pinned exactly
+    /// to `points[0]` and `points[len-1]`.
+    ///
+    /// Two failure modes of the single-curve fit are handled here. Sparse
+    /// slices (a 3 px jog followed by a 160 px straight leg is real walker
+    /// output) let a lone cubic interpolate every sample exactly while
+    /// ballooning between them, since the fit error is only measured at the
+    /// samples — densifying adds witnesses so the deviation is seen. And a
+    /// slice that genuinely needs more than one cubic is returned faithfully
+    /// instead of being collapsed onto its first fragment's handles. Falls
+    /// back to a straight segment when the fit fails outright.
+    pub fn fit_points_with_beziers(points: &[PointF64], max_error: f64) -> Vec<[PointF64; 4]> {
+        let p1 = points[0];
+        let p4 = points[points.len()-1];
+        let straight = || vec![[p1, p1, p4, p4]];
+
+        let dense = Self::densify(points, max_error);
+        let curves = match bezier::Curve::fit_from_points(&dense, max_error) {
+            Some(curves) if !curves.is_empty() => curves,
+            _ => return straight(),
+        };
+
+        // The fit's fragments do not share endpoints exactly — weld each pair
+        // at their midpoint (downstream consumes the chain as one continuous
+        // run of cubics), and pin the outer endpoints to the input.
+        let mut raw: Vec<[PointF64; 4]> = curves.iter()
+            .map(|c| [c.start_point, c.control_points.0, c.control_points.1, c.end_point])
+            .collect();
+        let last = raw.len() - 1;
+        raw[0][0] = p1;
+        raw[last][3] = p4;
+        for i in 1..raw.len() {
+            let shared = find_mid_point(&raw[i-1][3], &raw[i][0]);
+            raw[i-1][3] = shared;
+            raw[i][0] = shared;
+        }
+        raw.iter()
+            .map(|c| Self::retract_handles(&c[0], &c[1], &c[2], &c[3]))
+            .collect()
     }
 
     /// Takes a path and a slice of bool representing corner positions.
@@ -270,6 +343,81 @@ mod tests {
 
     fn p(x: f64, y: f64) -> PointF64 {
         PointF64 { x, y }
+    }
+
+    /// Witness insertion: consecutive points come out no farther apart than
+    /// the spacing, the original points are all preserved in order, and the
+    /// inserted points lie on the original segments.
+    #[test]
+    fn densify_bounds_spacing_and_preserves_points() {
+        let points = [p(0.0, 0.0), p(0.0, 100.0), p(3.0, 101.0)];
+        let dense = SubdivideSmooth::densify(&points, 10.0);
+
+        assert_eq!(dense[0], points[0]);
+        assert_eq!(dense[dense.len()-1], points[2]);
+        for w in dense.windows(2) {
+            let d = norm(&(w[1] - w[0]));
+            assert!(d <= 10.0 + 1e-9, "gap {d} exceeds spacing");
+        }
+        // Everything before (0,100) sits on the first (vertical) segment.
+        for q in dense.iter().take_while(|q| q.y < 100.0) {
+            assert_eq!(q.x, 0.0, "witness strays off the segment");
+        }
+        let originals: Vec<&PointF64> =
+            dense.iter().filter(|q| points.contains(q)).collect();
+        assert_eq!(originals.len(), 3, "original points preserved");
+    }
+
+    /// Consecutive duplicate points (zero-length segments) must not panic or
+    /// unpin the endpoints.
+    #[test]
+    fn fit_beziers_tolerates_duplicate_points() {
+        let points = [p(0.0, 0.0), p(5.0, 5.0), p(5.0, 5.0), p(10.0, 40.0)];
+        let curves = SubdivideSmooth::fit_points_with_beziers(&points, 10.0);
+        assert!(!curves.is_empty());
+        assert_eq!(curves[0][0], points[0]);
+        assert_eq!(curves[curves.len()-1][3], points[3]);
+    }
+
+    /// Real walker output: a 3 px jog then a 161 px straight leg. A single
+    /// cubic interpolates all three samples exactly while ballooning ~30 px
+    /// sideways between them — the fit must keep its handles near the data.
+    #[test]
+    fn fit_beziers_sparse_slice_stays_near_data() {
+        let points = [p(147.0, 165.0), p(149.0, 168.0), p(150.0, 329.0)];
+        let curves = SubdivideSmooth::fit_points_with_beziers(&points, 10.0);
+        assert_eq!(curves[0][0], points[0], "start pinned");
+        assert_eq!(curves[curves.len()-1][3], points[2], "end pinned");
+        for c in &curves {
+            for q in c {
+                assert!(
+                    q.x >= 137.0 && q.x <= 160.0 && q.y >= 155.0 && q.y <= 339.0,
+                    "control point {q:?} strays from the slice"
+                );
+            }
+        }
+    }
+
+    /// A slice that one cubic cannot approximate (a sharp V) must come back as
+    /// a chain of curves — continuous, with the outer endpoints pinned — not
+    /// as the first fragment stretched across the whole slice.
+    #[test]
+    fn fit_beziers_keeps_every_curve() {
+        let mut points: Vec<PointF64> = Vec::new();
+        for i in 0..=20 {
+            points.push(p(i as f64 * 15.0, i as f64 * 15.0));
+        }
+        for i in 1..=20 {
+            points.push(p(300.0 + i as f64 * 15.0, 300.0 - i as f64 * 15.0));
+        }
+
+        let curves = SubdivideSmooth::fit_points_with_beziers(&points, 10.0);
+        assert!(curves.len() >= 2, "a sharp V needs more than one cubic");
+        assert_eq!(curves[0][0], p(0.0, 0.0), "start pinned");
+        assert_eq!(curves[curves.len()-1][3], p(600.0, 0.0), "end pinned");
+        for w in curves.windows(2) {
+            assert_eq!(w[0][3], w[1][0], "chain is continuous");
+        }
     }
 
     #[test]
