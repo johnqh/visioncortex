@@ -1,6 +1,15 @@
 //! Algorithm to cluster a binary image
 
-use crate::{BinaryImage, BoundingRect, CompoundPath, MonoImage, MonoImageItem, PathI32, PathSimplifyMode, PointI32, Shape, Spline};
+use crate::{BinaryImage, BoundingRect, CompoundPath, PathI32, PathSimplifyMode, PointI32, ScalarField, Shape, Spline};
+
+/// Provisional label handed out by the scanline pass of [`BinaryImage::to_clusters`].
+///
+/// A label is taken every time a pixel starts a run with no labelled neighbour, and
+/// only a merge into the most recently issued label ever gives one back, so the peak
+/// tracks the number of runs rather than the number of connected components. A finely
+/// dithered mask can need one per set pixel, which is why this is not `MonoImageItem`.
+type ClusterLabel = u32;
+type ClusterLabelMap = ScalarField<ClusterLabel>;
 
 /// A cluster of binary image pixels
 #[derive(Default)]
@@ -268,11 +277,21 @@ impl IntoIterator for Clusters {
 }
 
 impl BinaryImage {
+    /// Group the set pixels into connected components.
+    ///
+    /// Panics if the image has more pixels than [`ClusterLabel`] can index; every
+    /// label issued is backed by a distinct pixel, so that bound is what keeps the
+    /// scanline pass below from running out of labels.
     pub fn to_clusters(&self, diagonal: bool) -> Clusters {
+        assert!(
+            self.width * self.height <= ClusterLabel::MAX as usize,
+            "image of {}x{} is too large to cluster",
+            self.width, self.height
+        );
         let mut clusters = Vec::<Cluster>::new();
         let mut rect = BoundingRect::default();
-        let mut clustermap = MonoImage::new_w_h(self.width, self.height);
-        let mut clusterindex: MonoImageItem = 0;
+        let mut clustermap = ClusterLabelMap::new_w_h(self.width, self.height);
+        let mut clusterindex: ClusterLabel = 0;
         for y in 0..self.height {
             for x in 0..self.width {
                 let pos = PointI32 { x: x as i32, y: y as i32 };
@@ -319,9 +338,6 @@ impl BinaryImage {
                         }
                         clustermap.set_pixel(x as usize, y as usize, clusterindex);
                         clusterindex += 1;
-                        if clusterindex == MonoImageItem::max_value() {
-                            panic!("overflow");
-                        }
                     }
                 }
             }
@@ -329,9 +345,9 @@ impl BinaryImage {
 
         pub fn combine_cluster(
             clusters: &mut Vec<Cluster>,
-            clustermap: &mut MonoImage,
-            from: MonoImageItem,
-            to: MonoImageItem,
+            clustermap: &mut ClusterLabelMap,
+            from: ClusterLabel,
+            to: ClusterLabel,
         ) {
             for o in clusters[from as usize].points.iter() {
                 clustermap.set_pixel(o.x as usize, o.y as usize, to);
@@ -522,5 +538,24 @@ mod tests {
             "***\n");
         assert_eq!(clusters.get_cluster(2).rect.left, 3);
         assert_eq!(clusters.get_cluster(2).rect.top, 1);
+    }
+
+    #[test]
+    fn clusters_beyond_16_bit_labels() {
+        // A checkerboard is the worst case for the scanline pass: with 4-connectivity
+        // every set pixel is isolated, so each one takes a fresh label and none are
+        // ever reclaimed by a merge. 512x512 needs 131072 of them.
+        let size = 512;
+        let mut image = BinaryImage::new_w_h(size, size);
+        for y in 0..size {
+            for x in 0..size {
+                if (x + y) % 2 == 0 {
+                    image.set_pixel(x, y, true);
+                }
+            }
+        }
+        let clusters = image.to_clusters(false);
+        assert_eq!(clusters.len(), size * size / 2);
+        assert!(clusters.clusters.iter().all(|c| c.size() == 1));
     }
 }

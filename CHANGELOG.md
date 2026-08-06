@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.9.2 - 2026-08-06
+
+* Fixed `BinaryImage::to_clusters` aborting with `panic!("overflow")` on masks
+  needing more than 65535 provisional labels. The scanline pass takes a label
+  every time a pixel starts a run with no labelled neighbour, and only reclaims
+  one when a merge frees the most recently issued label, so the peak tracks the
+  number of runs rather than the number of connected components — a finely
+  fragmented mask can need one label per set pixel, far beyond what the 16-bit
+  `MonoImageItem` held. The label map is now `u32`, a range the pixel count
+  already bounds, so the counter can no longer run out. `MonoImageItem` itself
+  is unchanged, only the labels internal to `to_clusters` widened, and
+  clustering output is byte-for-byte unaffected.
+
 ## 0.9.1 - 2026-07-27
 
 * Fixed cubic Bezier fitting swinging far away from the input on sparse,
