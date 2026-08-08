@@ -228,6 +228,7 @@ where
             cluster_indices: vec![Default::default(); len / 4],
             cluster_areas: Vec::new(),
             area_members: HashMap::new(),
+            neighbour_scratch: Vec::new(),
             clusters_output: Vec::new(),
             stage: 1,
             iteration: 0,
@@ -299,6 +300,9 @@ pub struct BuilderImpl<C, D, P, H> {
     // whole `clusters` vec per bucket. Entries can be stale (a cluster that has
     // since grown past that area); stage 2 rechecks `area()` and skips them.
     area_members: HashMap<usize, Vec<ClusterIndex>>,
+    // Reused scratch for stage 2's neighbour gathering, so the hot loop does not
+    // allocate a fresh HashSet/Vec per merge.
+    neighbour_scratch: Vec<ClusterIndex>,
     clusters_output: Vec<ClusterIndex>, // indices of good clusters
     stage: u32,
     iteration: u32,
@@ -554,6 +558,10 @@ where
             prof::add(&prof::SCAN_ITERS, members.len() as u64);
         }
 
+        // Own the neighbour scratch for the duration of the bucket so the hot
+        // loop reuses one allocation; returned to `self` after the loop.
+        let mut neighbour_scratch = std::mem::take(&mut self.neighbour_scratch);
+
         for index in members {
 
             let mycluster = self.get_cluster(index);
@@ -579,8 +587,8 @@ where
             let matched_area = mycluster.area() as u64;
 
             let mycolor = mycluster.color();
-            let mut infos: Vec<_> = mycluster
-                .neighbours(&self.view())
+            self.fill_neighbours(index, &mut neighbour_scratch);
+            let mut infos: Vec<_> = neighbour_scratch
                 .iter()
                 .map(|other| NeighbourInfo {
                     index: *other,
@@ -668,8 +676,44 @@ where
             prof::add(&prof::BOOKKEEP_NS, bookkeep_start.elapsed().as_nanos() as u64);
         }
 
+        self.neighbour_scratch = neighbour_scratch;
+
         self.iteration += 1;
         self.iteration as usize == self.cluster_areas.len()
+    }
+
+    /// Fill `out` with `index`'s distinct 4-connected neighbour clusters,
+    /// sorted ascending (excluding self and the reserved ZERO cluster). Same
+    /// result as [`Cluster::neighbours`], but writes into a caller-owned buffer
+    /// (no per-call allocation) and dedups via sort instead of a HashSet. A
+    /// cluster's own pixels map to `index` in `cluster_indices`, so `index`
+    /// doubles as the "self" to exclude.
+    fn fill_neighbours(&self, index: ClusterIndex, out: &mut Vec<ClusterIndex>) {
+        out.clear();
+        let width = self.width;
+        let height = self.height;
+        for &i in self.get_cluster(index).iter() {
+            let x = i % width;
+            let y = i / width;
+            if y > 0 {
+                let n = self.cluster_indices[(width * (y - 1) + x) as usize];
+                if n != ZERO && n != index { out.push(n); }
+            }
+            if y < height - 1 {
+                let n = self.cluster_indices[(width * (y + 1) + x) as usize];
+                if n != ZERO && n != index { out.push(n); }
+            }
+            if x > 0 {
+                let n = self.cluster_indices[(width * y + (x - 1)) as usize];
+                if n != ZERO && n != index { out.push(n); }
+            }
+            if x < width - 1 {
+                let n = self.cluster_indices[(width * y + (x + 1)) as usize];
+                if n != ZERO && n != index { out.push(n); }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
     }
 
     pub fn merge_cluster_into(&mut self, from: ClusterIndex, to: ClusterIndex, deepen: bool, hollow: bool) {
