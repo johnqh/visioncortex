@@ -627,7 +627,18 @@ where
                 continue;
             }
 
-            infos.sort_by_key(|info| info.diff as i64 * 65535 + info.index.0 as i64);
+            // Only `infos[0]` (the best target) and `infos.len()` are consumed
+            // downstream (the deepen/hollow closures), so a min-scan that moves
+            // the best element to the front is equivalent to a full sort and
+            // avoids O(k log k). `min_by_key` returns the first minimum, matching
+            // the stable sort's element-0 exactly (byte-identical output).
+            let best = infos
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, info)| info.diff as i64 * 65535 + info.index.0 as i64)
+                .map(|(idx, _)| idx)
+                .unwrap();
+            infos.swap(0, best);
 
             let target = infos[0].index;
 
