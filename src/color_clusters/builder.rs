@@ -396,6 +396,15 @@ where
         let has_key = key != Color::default();
         let len = self.cluster_indices.len();
 
+        // Within a row, `left` is the previous pixel's `color` and `upleft` is
+        // the previous pixel's `up`, so carry them instead of refetching (2 of
+        // the 4 per-pixel fetches). The carries are local to this batch; the
+        // first pixel of the batch may land mid-row, so it fetches once to seed
+        // them. Values are identical to `pixel_at(x-1, y)` / `pixel_at(x-1, y-1)`.
+        let mut carry_left: Option<Color> = None;
+        let mut carry_upleft: Option<Color> = None;
+        let mut first_in_batch = true;
+
         for i in (self.iteration..(self.iteration + batch_size)).take_while(|&i| (i as usize) < len)
         {
             let x = (i % self.width) as i32;
@@ -403,8 +412,16 @@ where
 
             let color = self.pixel_at(x, y);
             let up = self.pixel_at(x, y - 1);
-            let left = self.pixel_at(x - 1, y);
-            let upleft = self.pixel_at(x - 1, y - 1);
+            let (left, upleft) = if x == 0 {
+                (None, None)
+            } else if first_in_batch {
+                (self.pixel_at(x - 1, y), self.pixel_at(x - 1, y - 1))
+            } else {
+                (carry_left, carry_upleft)
+            };
+            first_in_batch = false;
+            carry_left = color;
+            carry_upleft = up;
 
             let mut cluster_up = if y > 0 {
                 self.cluster_indices[(self.width as i32 * (y - 1) + x) as usize]
