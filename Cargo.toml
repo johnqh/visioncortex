@@ -18,3 +18,11 @@ exclude = [
 bit-vec = "0.6"
 num-traits = "0.2"
 flo_curves = "0.3"
+
+[features]
+# Instruments color_clusters stage 2 with operation counters and coarse timers.
+# Off by default; enable only for profiling (see examples/profile_stage2.rs).
+profile-stage2 = []
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

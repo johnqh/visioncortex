@@ -2,6 +2,60 @@ use std::collections::HashMap;
 use crate::{Color, ColorImage};
 use super::{Cluster, Clusters, ClustersView, container::ClusterIndex, container::ClusterIndexElem};
 
+/// Operation counters and coarse timers for the hierarchical-merge stage.
+/// Compiled only under the `profile-stage2` feature; zero cost otherwise.
+#[cfg(feature = "profile-stage2")]
+pub mod prof {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    pub static STAGE2_NS: AtomicU64 = AtomicU64::new(0);
+    pub static NEIGHBOUR_NS: AtomicU64 = AtomicU64::new(0);
+    pub static BOOKKEEP_NS: AtomicU64 = AtomicU64::new(0);
+    pub static MERGE_NS: AtomicU64 = AtomicU64::new(0);
+    pub static SCAN_ITERS: AtomicU64 = AtomicU64::new(0);
+    pub static MATCHED: AtomicU64 = AtomicU64::new(0);
+    pub static BUCKETS: AtomicU64 = AtomicU64::new(0);
+    pub static MERGES: AtomicU64 = AtomicU64::new(0);
+    pub static NEIGHBOUR_PIX: AtomicU64 = AtomicU64::new(0);
+
+    const ALL: &[(&str, &AtomicU64)] = &[
+        ("stage2_ns", &STAGE2_NS),
+        ("neighbour_ns", &NEIGHBOUR_NS),
+        ("bookkeep_ns", &BOOKKEEP_NS),
+        ("merge_ns", &MERGE_NS),
+        ("scan_iters", &SCAN_ITERS),
+        ("matched", &MATCHED),
+        ("buckets", &BUCKETS),
+        ("merges", &MERGES),
+        ("neighbour_pix", &NEIGHBOUR_PIX),
+    ];
+
+    pub fn add(counter: &AtomicU64, v: u64) {
+        counter.fetch_add(v, Ordering::Relaxed);
+    }
+
+    pub fn reset() {
+        for (_, a) in ALL {
+            a.store(0, Ordering::Relaxed);
+        }
+    }
+
+    pub fn snapshot() -> Vec<(&'static str, u64)> {
+        ALL.iter().map(|(n, a)| (*n, a.load(Ordering::Relaxed))).collect()
+    }
+}
+
+/// RAII timer that adds its lifetime (ns) to a counter on drop; used so the
+/// many early-return paths of `stage_2` are all covered.
+#[cfg(feature = "profile-stage2")]
+struct TimeGuard(std::time::Instant, &'static std::sync::atomic::AtomicU64);
+#[cfg(feature = "profile-stage2")]
+impl Drop for TimeGuard {
+    fn drop(&mut self) {
+        prof::add(self.1, self.0.elapsed().as_nanos() as u64);
+    }
+}
+
 // Describes what to do with pixels that match the key color
 #[derive(Default, Clone, Copy)]
 pub enum KeyingAction {
@@ -173,6 +227,7 @@ where
             clusters: vec![Cluster::new()],
             cluster_indices: vec![Default::default(); len / 4],
             cluster_areas: Vec::new(),
+            area_members: HashMap::new(),
             clusters_output: Vec::new(),
             stage: 1,
             iteration: 0,
@@ -239,6 +294,11 @@ pub struct BuilderImpl<C, D, P, H> {
     clusters: Vec<Cluster>,    // array of clusters
     pub(crate) cluster_indices: Vec<ClusterIndex>, // the cluster index each pixel belongs to
     cluster_areas: Vec<Area>,  // uniquely sorted array of cluster sizes
+    // area -> cluster indices currently (or formerly) at that area, so stage 2
+    // visits only the clusters of the bucket it is on instead of rescanning the
+    // whole `clusters` vec per bucket. Entries can be stale (a cluster that has
+    // since grown past that area); stage 2 rechecks `area()` and skips them.
+    area_members: HashMap<usize, Vec<ClusterIndex>>,
     clusters_output: Vec<ClusterIndex>, // indices of good clusters
     stage: u32,
     iteration: u32,
@@ -436,14 +496,22 @@ where
         }
 
         let mut counts = HashMap::new();
+        // Seed the area index in ascending cluster-index order, so each bucket's
+        // members match the order the old full scan (0..clusters.len()) visited.
+        let mut area_members: HashMap<usize, Vec<ClusterIndex>> = HashMap::new();
 
-        for area in self
+        for (index, area) in self
             .clusters
             .iter()
-            .filter(|c| c.area() > 0)
             .map(|c| c.area())
+            .enumerate()
+            .filter(|(_, area)| *area > 0)
         {
             *counts.entry(area).or_insert(0) += 1;
+            area_members
+                .entry(area)
+                .or_default()
+                .push(ClusterIndex(index as ClusterIndexElem));
         }
 
         let mut areas = counts
@@ -454,9 +522,12 @@ where
         areas.sort_by_key(|a| a.area);
 
         self.cluster_areas = areas;
+        self.area_members = area_members;
     }
 
     fn stage_2(&mut self) -> bool {
+        #[cfg(feature = "profile-stage2")]
+        let _stage2_guard = TimeGuard(std::time::Instant::now(), &prof::STAGE2_NS);
         if self.cluster_areas.is_empty() {
             return true;
         }
@@ -471,19 +542,41 @@ where
         let cur_area = self.cluster_areas[self.iteration as usize].area;
         let can_discard_pixels = matches!(self.keying_action, KeyingAction::Discard) && self.key != Color::default();
 
-        for index in 0..self.clusters.len() {
+        // Visit only this bucket's clusters, in ascending index order (matching
+        // the old full 0..clusters.len() scan). Taking the list out lets us push
+        // grown targets into other buckets while iterating this one.
+        let mut members = self.area_members.remove(&cur_area).unwrap_or_default();
+        members.sort_unstable_by_key(|c| c.0);
 
-            let index = ClusterIndex(index as ClusterIndexElem);
+        #[cfg(feature = "profile-stage2")]
+        {
+            prof::add(&prof::BUCKETS, 1);
+            prof::add(&prof::SCAN_ITERS, members.len() as u64);
+        }
+
+        for index in members {
+
             let mycluster = self.get_cluster(index);
 
+            // Stale entry: this cluster grew past cur_area via an earlier merge
+            // in this bucket (or a prior one). The old full scan skipped it by
+            // the same area test.
             if mycluster.area() != cur_area {
                 continue;
             }
+
+            #[cfg(feature = "profile-stage2")]
+            prof::add(&prof::MATCHED, 1);
 
             if cur_area > self.hierarchical as usize {
                 self.clusters_output.push(index);
                 continue;
             }
+
+            #[cfg(feature = "profile-stage2")]
+            let neighbour_start = std::time::Instant::now();
+            #[cfg(feature = "profile-stage2")]
+            let matched_area = mycluster.area() as u64;
 
             let mycolor = mycluster.color();
             let mut infos: Vec<_> = mycluster
@@ -494,6 +587,12 @@ where
                     diff: (self.diff)(mycolor, self.get_cluster(*other).color()),
                 })
                 .collect();
+
+            #[cfg(feature = "profile-stage2")]
+            {
+                prof::add(&prof::NEIGHBOUR_NS, neighbour_start.elapsed().as_nanos() as u64);
+                prof::add(&prof::NEIGHBOUR_PIX, matched_area);
+            }
 
             if infos.is_empty() {
                 if self.iteration == self.cluster_areas.len() as ClusterIndexElem - 1  || can_discard_pixels {
@@ -518,14 +617,33 @@ where
                 self.clusters_output.push(index);
             }
 
+            #[cfg(feature = "profile-stage2")]
+            let bookkeep_start = std::time::Instant::now();
+
             let target_in_areas = self
                 .cluster_areas
                 .binary_search_by_key(&self.clusters[target.0 as usize].area(), |a| a.area)
                 .unwrap();
 
             self.cluster_areas[target_in_areas].count -= 1;
+
+            #[cfg(feature = "profile-stage2")]
+            {
+                prof::add(&prof::BOOKKEEP_NS, bookkeep_start.elapsed().as_nanos() as u64);
+                prof::add(&prof::MERGES, 1);
+            }
+            #[cfg(feature = "profile-stage2")]
+            let merge_start = std::time::Instant::now();
+
             self.merge_cluster_into(index, target, deepen, hollow);
+
+            #[cfg(feature = "profile-stage2")]
+            prof::add(&prof::MERGE_NS, merge_start.elapsed().as_nanos() as u64);
+
             let updated_area = self.clusters[target.0 as usize].area();
+
+            #[cfg(feature = "profile-stage2")]
+            let bookkeep_start = std::time::Instant::now();
 
             match self
                 .cluster_areas
@@ -540,6 +658,14 @@ where
                     },
                 ),
             }
+
+            // The target grew into `updated_area` (> cur_area, so a later
+            // bucket); register it there. Its old-area entry is left stale and
+            // skipped by the area recheck when that bucket is processed.
+            self.area_members.entry(updated_area).or_default().push(target);
+
+            #[cfg(feature = "profile-stage2")]
+            prof::add(&prof::BOOKKEEP_NS, bookkeep_start.elapsed().as_nanos() as u64);
         }
 
         self.iteration += 1;
